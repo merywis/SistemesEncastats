@@ -122,18 +122,14 @@ void isrCAN()
 
   if (CAN.rxInterrupt())
   {
-        Serial.println("golaPrimero");
     hib.ledToggle(RX_LED); // for debugging
     
     CAN.readRxMsg();
     switch(CAN.getRxMsgId())
     {
       case CAN_ID_TEMP_EXT:
-        Serial.println("golaISR");
         CAN.getRxMsgData((byte*) &key);
-        Serial.println(key);
         so.setFlag(fCANPrintEvent, maskRxPrintTExtEvent);
-        Serial.println("env");
         break;
 
       default:
@@ -163,7 +159,7 @@ void isrCAN()
 
 void PrintTemp()
 {
-  uint8_t auxKey;
+  uint16_t auxKey;
   
   while(true){
      // Wait until any of the bits of the flag fCANevent
@@ -172,7 +168,8 @@ void PrintTemp()
           // Clear the maskRxSensorEvent bits of flag fCANEvent to not process the same event twice
     so.clearFlag(fCANPrintEvent, maskRxPrintTExtEvent);
     auxKey = key;
-    Serial.println("heyyyyy" + auxKey);
+    Serial.println("heyyyyy");
+    Serial.println(auxKey);
 
   }
 }
