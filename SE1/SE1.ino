@@ -29,7 +29,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PRIO_TASK_SHARE 7
 
 
-#define CAN_ID_KEY_TEMP_EXT 1
+#define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
 
@@ -158,6 +158,15 @@ struct structTempInt
   float tempIntRoom4 = 26.0;
 };
 typedef structTempInt typeTempInt;
+typeTempInt TempInt;
+
+struct structMessageTemp
+{
+  byte typeInfo;
+  byte numRoom;
+  float tempInt;
+};
+typedef structMessageTemp typeMessageTemp;
 
 
 /******************************************************************************/
@@ -267,7 +276,6 @@ void isrCAN()
 void State()
 {
   typeState state;
-  typeTempInt tempInter;
   uint8_t numRoom = 0;
   unsigned long nextActivationTick;
 
@@ -324,10 +332,10 @@ void State()
 
     so.waitSem(sTempInt);
 
-    state.datosRoom1.tempInt = tempInter.tempIntRoom1;
-    state.datosRoom2.tempInt = tempInter.tempIntRoom2;
-    state.datosRoom3.tempInt = tempInter.tempIntRoom3;
-    state.datosRoom4.tempInt = tempInter.tempIntRoom4;
+    state.datosRoom1.tempInt = TempInt.tempIntRoom1;
+    state.datosRoom2.tempInt = TempInt.tempIntRoom2;
+    state.datosRoom3.tempInt = TempInt.tempIntRoom3;
+    state.datosRoom4.tempInt = TempInt.tempIntRoom4;
 
     so.signalSem(sTempInt);
 
@@ -335,7 +343,7 @@ void State()
 
     //Consultar Límites
 
-    if (state.momentDay) {
+    if (state.momentDay) { //caso límites día
 
       if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
 
@@ -524,26 +532,60 @@ void ShareAdcValue() {
 
 
 
-void KeyDetector() {
+void KeyDetector()
+{
+  typeMessageTemp MessageTemp;
 
   while (1)
   {
     // Wait until any of the bits of the flag fExtEvent
     // indicated by the bits of maskAdcEvent are set to '1'
     so.waitFlag(fKeyEvent, maskKeyEvent);
-    
+
     // Clear the flag fExtEvent to not process the same event twice
     so.clearFlag(fKeyEvent, maskKeyEvent);
 
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       so.signalMBox(mbNumRoom, (byte*) &key);
     } else if (key == 8) { //Caso Tª exterior-> enviar valor key a través de CAN
+      MessageTemp.typeInfo = 8;
+
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_KEY_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), (INT8U *) &key);
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+
+
     } else if (key == 7) {
+      MessageTemp.typeInfo = 7;
+
       so.waitSem(sTempInt);
-      //CAN.sendMsgBufNonBlocking(CAN_ID_KEY_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), (INT8U *) &key);
+
+      MessageTemp.numRoom = 1;
+      MessageTemp.tempInt = TempInt.tempIntRoom1;
+      // Send sensor via CAN
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+
+
+      MessageTemp.numRoom = 2;
+      MessageTemp.tempInt = TempInt.tempIntRoom2;
+      // Send sensor via CAN
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+
+
+      MessageTemp.numRoom = 3;
+      MessageTemp.tempInt = TempInt.tempIntRoom3;
+      // Send sensor via CAN
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+
+      MessageTemp.numRoom = 4;
+      MessageTemp.tempInt = TempInt.tempIntRoom4;
+      // Send sensor via CAN
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+
       so.signalSem(sTempInt);
     }
   }

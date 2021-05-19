@@ -22,62 +22,64 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PRIO_TASK_PrintTemp 2
 
 
-#define CAN_ID_KEY_TEMP_EXT 1
+#define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
 
 
 #define PRIO_TASK_DETECT_TEMP_EXT 3
 #define PRIO_TASK_TIMETABLE_HEATING 4
-
+#define PRIO_TASK_SHARE_TIME 5
 
 #define PERIOD_TASK_DETECT_TEMP_EXT 5
 #define PERIOD_TASK_TIMETABLE_HEATING 5
 
-/*
-  #define PRIO_TASK_ShareAdcValue 3
-  #define PRIO_TASK_InsertTemp 4
-
-*/
 
 
 /******************************************************************************/
 /** Global const and variables ************************************************/
 /******************************************************************************/
 
-volatile uint8_t key = 0;
 volatile float TempExt = 0.0;
-/*
-  volatile uint16_t adcValue = 0;
-*/
+volatile boolean momentDay;
+
 /********************************
   Declaration of flags and masks
 *********************************/
-/*
-  // flag (set of bits) for external events
-  Flag fKeyEvent;
-  Flag fAdcEvent;
 
-  // Masks
-  const unsigned char maskKeyEvent = 0x01; // represents new adc value adquired
-  const unsigned char maskAdcEvent = 0x01; // represents new adc value adquired
-
-*/
 // flag (set of bits) for CAN reception events
 Flag fCANPrintEvent;
 
-// refers to the LSB bit of fCANevent
+
+// Masks
 const unsigned char maskRxPrintTExtEvent = 0x01; // represents reception of sensor via CAN
+
+
 /*********
   Declaration of semaphores
 *********/
 Sem sTempExt;
+Sem sTime;
+Sem sLCD;
 
 /*********
   Declaration of mailboxes
 *********/
+MBox mbLight;
 
+/******************************************************************************/
+/** Definition of own types ***************************************************/
+/******************************************************************************/
 
+struct structMessageTemp
+{
+  byte typeInfo;
+  byte numRoom;
+  float tempInt;
+};
+typedef structMessageTemp typeMessageTemp;
+
+typeMessageTemp rxMessageTemp;
 /******************************************************************************/
 /** Additional functions prototypes *******************************************/
 /******************************************************************************/
@@ -92,29 +94,13 @@ Sem sTempExt;
 /*****************
   KEYPAD hook
 ******************/
-/*void keyHook(uint8_t newKey)
-  {
 
-  key = newKey;
-
-  so.setFlag(fKeyEvent, maskKeyEvent);
-  }*/
 
 
 /*****************
   ADCISR
 ******************/
-/*
-  void adcHook(uint16_t newAdcAdquiredValue)
-  {
-  adcValue = newAdcAdquiredValue;
 
-  hib.ledToggle(2); // for debugging
-
-  // Awake task A by setting to '1' the bits of fExtEvent indicated by maskAdcEvent
-  so.setFlag(fAdcEvent, maskAdcEvent);
-
-  }*/
 
 /******************************************************************************/
 /** ISR *********************************************************************/
@@ -151,8 +137,8 @@ void isrCAN()
     CAN.readRxMsg();
     switch (CAN.getRxMsgId())
     {
-      case CAN_ID_KEY_TEMP_EXT:
-        CAN.getRxMsgData((byte*) &key);
+      case CAN_ID_PRINT_TEMP:
+        CAN.getRxMsgData((byte*) &rxMessageTemp);
         so.setFlag(fCANPrintEvent, maskRxPrintTExtEvent);
         break;
 
@@ -183,17 +169,52 @@ void isrCAN()
 
 void PrintTemp()
 {
-  uint16_t auxKey;
+  //*************porq tenemos q usar una global.
+  typeMessageTemp auxRxMessageTemp;
 
+  float auxTempExt;
+  boolean auxMomentDay;
+ char str[16];
+ 
   while (true) {
     // Wait until any of the bits of the flag fCANevent
     // indicated by the bits of maskRxSensorEvent are set to '1'
     so.waitFlag(fCANPrintEvent, maskRxPrintTExtEvent);
     // Clear the maskRxSensorEvent bits of flag fCANEvent to not process the same event twice
     so.clearFlag(fCANPrintEvent, maskRxPrintTExtEvent);
-    auxKey = key;
-    Serial.println("heyyyyy");
-    Serial.println(auxKey);
+
+    auxRxMessageTemp = rxMessageTemp;
+    if (auxRxMessageTemp.typeInfo == 8) { //tempExt
+
+      so.waitSem(sTempExt);
+
+      auxTempExt = TempExt;
+
+      so.signalSem(sTempExt);
+
+
+
+    } else if (auxRxMessageTemp.typeInfo == 7) {
+
+
+    }
+
+
+    so.waitSem(sTime);
+
+    auxMomentDay = momentDay;
+
+    so.signalSem(sTime);
+
+    // The LCD is a critial region itself (shared between PrintTemp and Alarm)
+    so.waitSem(sLCD);
+    hib.ledToggle(5);
+    //sprintf(str, "%u", auxTempExt);
+    
+    hib.lcdClear();
+    hib.lcdPrint("holi");
+    
+    so.signalSem(sLCD);
 
   }
 }
@@ -221,8 +242,8 @@ void DetectTempExt()
 
 
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-      CAN.sendMsgBufNonBlocking(CAN_ID_TEMP_EXT, CAN_EXTID, sizeof(float),(INT8U *)  &celsius);
-      
+      CAN.sendMsgBufNonBlocking(CAN_ID_TEMP_EXT, CAN_EXTID, sizeof(float), (INT8U *)  &celsius);
+
     nextActivationTick = nextActivationTick +  PERIOD_TASK_DETECT_TEMP_EXT; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
   }
@@ -253,6 +274,24 @@ void TimetableHeating()
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
+  }
+
+}
+
+void ShareTime()
+{
+
+  boolean * rxLight;
+
+  while (true) {
+    so.waitMBox(mbLight, (byte**) &rxLight);
+
+    so.waitSem(sTime);
+
+    momentDay = *rxLight;
+
+    so.signalSem(sTime);
+
   }
 
 }
@@ -307,7 +346,11 @@ void loop() {
 
     // Definition and initialization of semaphores
     sTempExt = so.defSem(1); // intially accesible
+    sTime = so.defSem(1); // intially accesible
+    sLCD = so.defSem(1); // intially accesible
 
+    // Definition and initialization of mailboxes
+    mbLight = so.defMBox();
 
     // Definition and initialization of flags
     fCANPrintEvent = so.defFlag();
@@ -316,6 +359,8 @@ void loop() {
     so.defTask(PrintTemp, PRIO_TASK_PrintTemp);
     so.defTask(DetectTempExt, PRIO_TASK_DETECT_TEMP_EXT);
     so.defTask(TimetableHeating, PRIO_TASK_TIMETABLE_HEATING);
+    so.defTask(ShareTime, PRIO_TASK_SHARE_TIME);
+
 
     //Set up timer 5 so that the SO can regain the CPU every tick
     hib.setUpTimer5(TIMER_TICKS_FOR_125ms, TIMER_PSCALER_FOR_125ms, timer5Hook);
