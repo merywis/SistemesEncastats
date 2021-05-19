@@ -21,11 +21,12 @@ MCP_CAN CAN(SPI_CS_PIN);
 /******************************************************************************/
 #define NUM_ROOM 4
 #define PRIO_TASK_STATE 1
-#define PRIO_TASK_KeyDetector 2
-#define PRIO_TASK_ShareAdcValue 3
-#define PRIO_TASK_InsertTemp 4
-#define PRIO_TASK_InsertComandos 5
-#define PRIO_TASK_SHARE 6
+#define PRIO_TASK_SIMULATE_TEMP_INT 2
+#define PRIO_TASK_KeyDetector 3
+#define PRIO_TASK_ShareAdcValue 4
+#define PRIO_TASK_InsertTemp 5
+#define PRIO_TASK_InsertComandos 6
+#define PRIO_TASK_SHARE 7
 
 
 #define CAN_ID_KEY_TEMP_EXT 1
@@ -83,11 +84,13 @@ Sem sSampledAdc;
 Sem sTime;
 Sem sTempExt;
 Sem sGoal;
+Sem sTempInt;
 
 /*********
   Declaration of mailboxes
 *********/
 MBox mbNumRoom;
+MBox mbStructInfo;
 
 
 /******************************************************************************/
@@ -146,6 +149,15 @@ struct structLimites
 
 };
 typedef structLimites typeLimites;
+
+struct structTempInt
+{
+  float tempIntRoom1 = 26.0;
+  float tempIntRoom2 = 26.0;
+  float tempIntRoom3 = 26.0;
+  float tempIntRoom4 = 26.0;
+};
+typedef structTempInt typeTempInt;
 
 
 /******************************************************************************/
@@ -255,6 +267,7 @@ void isrCAN()
 void State()
 {
   typeState state;
+  typeTempInt tempInter;
   uint8_t numRoom = 0;
   unsigned long nextActivationTick;
 
@@ -270,28 +283,97 @@ void State()
 
     so.signalSem(sTempExt);
 
+    //Moment of the Day
     so.waitSem(sTime);
 
     state.momentDay = MomentDay;
 
     so.signalSem(sTime);
 
-    for (int i = 1; i < NUM_ROOM; i++) {
+    //Consigna
+    so.waitSem(sGoal);
 
-      so.waitSem(sGoal);
+    numRoom = Goal.numRoom;
 
-      numRoom = Goal.numRoom;
+    so.signalSem(sGoal);
 
-      so.signalSem(sGoal);
+    //Actualizar el valor
+    switch (numRoom)
+    {
+      case 1:
+        state.datosRoom1.tempGoal = Goal.tempGoal;
+        break;
 
-    if (numRoom == i){
-       state.datosRoomi.tempGoal = Goal.tempGoal;
+      case 2:
+        state.datosRoom2.tempGoal = Goal.tempGoal;
+        break;
+
+      case 3:
+        state.datosRoom3.tempGoal = Goal.tempGoal;
+        break;
+
+      case 4:
+        state.datosRoom4.tempGoal = Goal.tempGoal;
+        break;
+
+      default:
+        break;
     }
-     
+
+    //Temp Int de Cada Habitacion
+
+    so.waitSem(sTempInt);
+
+    state.datosRoom1.tempInt = tempInter.tempIntRoom1;
+    state.datosRoom2.tempInt = tempInter.tempIntRoom2;
+    state.datosRoom3.tempInt = tempInter.tempIntRoom3;
+    state.datosRoom4.tempInt = tempInter.tempIntRoom4;
+
+    so.signalSem(sTempInt);
+
+    //Calculo de la Actuación
+
+    //Consultar Límites
+
+    if (state.momentDay) {
+
+      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
+
+      }
+
+      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxDay || state.datosRoom2.tempInt < state.datosRoom2.tempMinDay) {
+
+      }
+
+      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxDay || state.datosRoom3.tempInt < state.datosRoom3.tempMinDay) {
+
+      }
+
+      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxDay || state.datosRoom4.tempInt < state.datosRoom4.tempMinDay) {
+
+      }
+
+    } else {
+
+      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxNight || state.datosRoom1.tempInt < state.datosRoom1.tempMinNight) {
+
+      }
+
+      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxNight || state.datosRoom2.tempInt < state.datosRoom2.tempMinNight) {
+
+      }
+
+      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxNight || state.datosRoom3.tempInt < state.datosRoom3.tempMinNight) {
+
+      }
+
+      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxNight || state.datosRoom4.tempInt < state.datosRoom4.tempMinNight) {
+
+      }
+
     }
 
-
-
+    //Transmitir Actuación
 
 
 
@@ -300,6 +382,15 @@ void State()
   }
 }
 
+void SimulateTempInt()
+{
+  uint8_t * rxStructInfoMessage;
+
+  while (true) {
+    so.waitMBox(mbNumRoom, (byte**) &rxStructInfoMessage);
+  }
+
+}
 
 void Share() {
   // define a mask to awake either by maskAlarm or maskNotAlarm
@@ -435,27 +526,26 @@ void ShareAdcValue() {
 
 void KeyDetector() {
 
-  char str[16];
-
   while (1)
   {
     // Wait until any of the bits of the flag fExtEvent
     // indicated by the bits of maskAdcEvent are set to '1'
     so.waitFlag(fKeyEvent, maskKeyEvent);
-
+    
+    // Clear the flag fExtEvent to not process the same event twice
+    so.clearFlag(fKeyEvent, maskKeyEvent);
 
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       so.signalMBox(mbNumRoom, (byte*) &key);
     } else if (key == 8) { //Caso Tª exterior-> enviar valor key a través de CAN
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_KEY_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), &key);
+        CAN.sendMsgBufNonBlocking(CAN_ID_KEY_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), (INT8U *) &key);
     } else if (key == 7) {
-
+      so.waitSem(sTempInt);
+      //CAN.sendMsgBufNonBlocking(CAN_ID_KEY_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), (INT8U *) &key);
+      so.signalSem(sTempInt);
     }
-
-    // Clear the flag fExtEvent to not process the same event twice
-    so.clearFlag(fKeyEvent, maskKeyEvent);
   }
 }
 
@@ -525,7 +615,7 @@ void setup() {
   // Set CAN interrupt handler address in the position of interrupt number 0
   // since the INT output signal of the CAN shield is connected to
   // the Mega 2560 pin num 2, which is associated to that interrupt number.
-attachInterrupt(0, isrCAN, FALLING);
+  attachInterrupt(0, isrCAN, FALLING);
 
 }
 
@@ -547,7 +637,7 @@ void loop() {
     sTime = so.defSem(1); // intially accesible
     sTempExt = so.defSem(1); // intially accesible
     sGoal = so.defSem(1); // intially accesible
-
+    sTempInt = so.defSem(1); // intially accesible
 
     // Definition and initialization of mailboxes
     mbNumRoom = so.defMBox();
@@ -565,13 +655,13 @@ void loop() {
     so.defTask(InsertTemp, PRIO_TASK_InsertTemp);
     so.defTask(InsertComandos, PRIO_TASK_InsertComandos);
     so.defTask(Share, PRIO_TASK_SHARE);
-
+    so.defTask(SimulateTempInt, PRIO_TASK_SIMULATE_TEMP_INT);
 
     //Set up adc
     hib.adcSetTimerDriven(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, adcHook);
 
     //Set up timer 5 so that the SO can regain the CPU every tick
-    hib.setUpTimer5(TIMER_TICKS_FOR_125ms, TIMER_PSCALER_FOR_125ms, timer5Hook);
+    hib.setUpTimer5(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, timer5Hook);
 
     // Start mutltasking (program does not return to 'main' from hereon)
     so.enterMultiTaskingEnvironment(); // GO TO SCHEDULER
