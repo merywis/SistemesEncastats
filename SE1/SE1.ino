@@ -28,9 +28,9 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PRIO_TASK_SHARE 6
 
 
-#define CAN_ID_TEMP_EXT 1
-#define CAN_ID_TEMP 2
-#define CAN_ID_TIME 3
+#define CAN_ID_KEY_TEMP_EXT 1
+#define CAN_ID_TEMP_EXT 2
+#define CAN_ID_LIGHT 3
 
 
 #define PERIOD_TASK_STATE 3
@@ -216,12 +216,12 @@ void isrCAN()
     CAN.readRxMsg();
     switch (CAN.getRxMsgId())
     {
-      case CAN_ID_TEMP:
+      case CAN_ID_TEMP_EXT:
         CAN.getRxMsgData((byte*) &rxTemp);
         so.setFlag(fCANEvent, maskRxTempExtEvent);
         break;
 
-      case CAN_ID_TIME:
+      case CAN_ID_LIGHT:
         CAN.getRxMsgData((byte*) &rxTime);
         so.setFlag(fCANEvent, maskRxTimeEvent);
         break;
@@ -449,7 +449,7 @@ void KeyDetector() {
     } else if (key == 8) { //Caso Tª exterior-> enviar valor key a través de CAN
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), &key);
+        CAN.sendMsgBufNonBlocking(CAN_ID_KEY_TEMP_EXT, CAN_EXTID, sizeof(uint8_t), &key);
     } else if (key == 7) {
 
     }
@@ -525,7 +525,7 @@ void setup() {
   // Set CAN interrupt handler address in the position of interrupt number 0
   // since the INT output signal of the CAN shield is connected to
   // the Mega 2560 pin num 2, which is associated to that interrupt number.
-
+attachInterrupt(0, isrCAN, FALLING);
 
 }
 
