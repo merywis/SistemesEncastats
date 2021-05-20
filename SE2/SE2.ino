@@ -174,7 +174,9 @@ void PrintTemp()
 
   float auxTempExt;
   boolean auxMomentDay;
- char str[16];
+  String momentOfDay;
+ char strDay[3] = "day";
+ char strNight[5] = "night";
  
   while (true) {
     // Wait until any of the bits of the flag fCANevent
@@ -206,12 +208,21 @@ void PrintTemp()
 
     so.signalSem(sTime);
 
+
+ 
+  if(auxMomentDay == true){
+    hib.lcdPrint("dia");
+  }else{
+   hib.lcdPrint("noche");
+  }
+  
     // The LCD is a critial region itself (shared between PrintTemp and Alarm)
     so.waitSem(sLCD);
-    hib.ledToggle(5);
+   // hib.ledToggle(5);
     //sprintf(str, "%u", auxTempExt);
     
     hib.lcdClear();
+    //substituir por un char 
     hib.lcdPrint("holi");
     
     so.signalSem(sLCD);

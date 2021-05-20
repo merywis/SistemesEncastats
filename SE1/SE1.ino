@@ -80,11 +80,13 @@ const unsigned char maskRxTimeEvent = 0x02; // represents new adc value adquired
 /*********
   Declaration of semaphores
 *********/
-Sem sSampledAdc;
+
+Sem sTempInt;
 Sem sTime;
 Sem sTempExt;
 Sem sGoal;
-Sem sTempInt;
+Sem sSampledAdc;
+
 
 /*********
   Declaration of mailboxes
@@ -275,6 +277,7 @@ void isrCAN()
 
 void State()
 {
+
   typeState state;
   uint8_t numRoom = 0;
   unsigned long nextActivationTick;
@@ -283,7 +286,7 @@ void State()
 
   while (true)
   {
-
+   Serial.println("estoy en la tareastate");
     // Read adcValue (shared with ShareAdcValue)
     so.waitSem(sTempExt);
 
@@ -297,13 +300,15 @@ void State()
     state.momentDay = MomentDay;
 
     so.signalSem(sTime);
-
+   Serial.println("antes wait goal");
     //Consigna
     so.waitSem(sGoal);
 
     numRoom = Goal.numRoom;
 
     so.signalSem(sGoal);
+
+       Serial.println("dsps wait goal");
 
     //Actualizar el valor
     switch (numRoom)
@@ -340,6 +345,9 @@ void State()
     so.signalSem(sTempInt);
 
     //Calculo de la Actuación
+    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0,2 * state.tempExt - 0,2 * state.datosRoom1.tempInt) / 0,6;
+     Serial.print("actuacion: ");
+    Serial.println( state.datosRoom1.actuacion);
 
     //Consultar Límites
 
@@ -549,7 +557,7 @@ void KeyDetector()
       so.signalMBox(mbNumRoom, (byte*) &key);
     } else if (key == 8) { //Caso Tª exterior-> enviar valor key a través de CAN
       MessageTemp.typeInfo = 8;
-
+      term.println("caso key 8");
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
@@ -557,36 +565,49 @@ void KeyDetector()
 
     } else if (key == 7) {
       MessageTemp.typeInfo = 7;
-
-      so.waitSem(sTempInt);
-
       MessageTemp.numRoom = 1;
+      term.println("caso key 7");
+      so.waitSem(sTempInt);
       MessageTemp.tempInt = TempInt.tempIntRoom1;
+      so.signalSem(sTempInt);
+
+
+
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
 
 
       MessageTemp.numRoom = 2;
+
+      so.waitSem(sTempInt);
       MessageTemp.tempInt = TempInt.tempIntRoom2;
+      so.signalSem(sTempInt);
+
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
 
 
       MessageTemp.numRoom = 3;
+      so.waitSem(sTempInt);
       MessageTemp.tempInt = TempInt.tempIntRoom3;
+      so.signalSem(sTempInt);
+
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+
 
       MessageTemp.numRoom = 4;
+      so.waitSem(sTempInt);
       MessageTemp.tempInt = TempInt.tempIntRoom4;
+      so.signalSem(sTempInt);
+
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
 
-      so.signalSem(sTempInt);
     }
   }
 }
@@ -675,11 +696,12 @@ void loop() {
     Serial.println("Por ejemplo: 2 27 17 dia");
 
     // Definition and initialization of semaphores
-    sSampledAdc = so.defSem(1); // intially accesible
+    sTempInt = so.defSem(1); // intially accesible
     sTime = so.defSem(1); // intially accesible
     sTempExt = so.defSem(1); // intially accesible
     sGoal = so.defSem(1); // intially accesible
-    sTempInt = so.defSem(1); // intially accesible
+    sSampledAdc = so.defSem(1); // intially accesible
+
 
     // Definition and initialization of mailboxes
     mbNumRoom = so.defMBox();
