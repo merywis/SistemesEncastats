@@ -92,7 +92,7 @@ Sem sSampledAdc;
   Declaration of mailboxes
 *********/
 MBox mbNumRoom;
-MBox mbStructInfo;
+MBox mbInfoTemp;
 
 
 /******************************************************************************/
@@ -101,9 +101,9 @@ MBox mbStructInfo;
 
 struct structRoom
 {
-  float tempGoal = 0.0; //
-  float tempInt = 0.0; //
-  uint8_t actuacion = 0;
+  float tempGoal; //
+  float tempInt; //
+  float actuacion;
   float tempMaxDay = 0.0;
   float tempMinDay = 0.0;
   float tempMaxNight = 0.0;
@@ -114,7 +114,7 @@ typedef structRoom typeRoom;
 
 struct structState
 {
-  float tempExt = 0.0; // Number of edition
+  float tempExt; // Number of edition
   boolean momentDay = true; // true = day & false = night
   typeRoom datosRoom1;
   typeRoom datosRoom2;
@@ -127,7 +127,7 @@ typedef structState typeState;
 struct structGoal
 {
   uint8_t numRoom = 0; // Number of edition
-  uint8_t tempGoal = 0; // Number of edition
+  float tempGoal = 21.00; // Number of edition
 };
 typedef structGoal typeGoal;
 
@@ -169,6 +169,15 @@ struct structMessageTemp
   float tempInt;
 };
 typedef structMessageTemp typeMessageTemp;
+
+struct structTempInfo
+{
+  uint8_t nomRoom;
+  float actuacion;
+  float tempExt;
+  float tempInt;
+};
+typedef structTempInfo typeTempInfo;
 
 
 /******************************************************************************/
@@ -279,6 +288,7 @@ void State()
 {
 
   typeState state;
+  typeTempInfo infoSimulateTemp;
   uint8_t numRoom = 0;
   unsigned long nextActivationTick;
 
@@ -286,7 +296,7 @@ void State()
 
   while (true)
   {
-   Serial.println("estoy en la tareastate");
+    Serial.println("estoy en la tareastate");
     // Read adcValue (shared with ShareAdcValue)
     so.waitSem(sTempExt);
 
@@ -300,7 +310,7 @@ void State()
     state.momentDay = MomentDay;
 
     so.signalSem(sTime);
-   Serial.println("antes wait goal");
+    Serial.println("antes wait goal");
     //Consigna
     so.waitSem(sGoal);
 
@@ -308,7 +318,7 @@ void State()
 
     so.signalSem(sGoal);
 
-       Serial.println("dsps wait goal");
+    Serial.println("dsps wait goal");
 
     //Actualizar el valor
     switch (numRoom)
@@ -345,12 +355,11 @@ void State()
     so.signalSem(sTempInt);
 
     //Calculo de la Actuación
-    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0,2 * state.tempExt - 0,2 * state.datosRoom1.tempInt) / 0,6;
-     Serial.print("actuacion: ");
+    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0, 2 * state.tempExt - 0, 2 * state.datosRoom1.tempInt) / 0, 6;
+    Serial.print("actuacion: ");
     Serial.println( state.datosRoom1.actuacion);
 
     //Consultar Límites
-
     if (state.momentDay) { //caso límites día
 
       if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
@@ -390,8 +399,33 @@ void State()
     }
 
     //Transmitir Actuación
+    infoSimulateTemp.nomRoom = 1;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom1.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom1.actuacion;
 
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
+    infoSimulateTemp.nomRoom = 2;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom2.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom2.actuacion;
+
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+
+    infoSimulateTemp.nomRoom = 3;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom3.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom3.actuacion;
+
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+
+    infoSimulateTemp.nomRoom = 4;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom4.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom4.actuacion;
+
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
@@ -400,10 +434,63 @@ void State()
 
 void SimulateTempInt()
 {
-  uint8_t * rxStructInfoMessage;
+
+
+  typeTempInfo infoSimulateTemp;
+  typeTempInfo * rxStructInfoMessage;
+  float newTempInt;
+
 
   while (true) {
-    so.waitMBox(mbNumRoom, (byte**) &rxStructInfoMessage);
+    so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
+Serial.println("som a simulate temp int");
+    infoSimulateTemp = *rxStructInfoMessage;
+
+    //PONER PRINTS 
+    Serial.print("Actuacion: ");
+    Serial.println(infoSimulateTemp.actuacion);
+
+    Serial.print("Temp Ext: ");
+    Serial.println(infoSimulateTemp.tempExt);
+
+    Serial.print("Temp Int: ");
+    Serial.println(infoSimulateTemp.tempInt);
+    
+    //Formula de la Actuación
+    newTempInt = 0.5 * infoSimulateTemp.actuacion + 0,25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
+    Serial.print("new temp int: ");
+    Serial.println(newTempInt);
+    //Actualizamos el valor
+    switch (infoSimulateTemp.nomRoom)
+    {
+      case 1:
+        so.waitSem(sTempInt);
+        TempInt.tempIntRoom1 = newTempInt;
+        so.signalSem(sTempInt);
+        break;
+
+      case 2:
+        so.waitSem(sTempInt);
+        TempInt.tempIntRoom2 = newTempInt;
+        so.signalSem(sTempInt);
+        break;
+
+      case 3:
+        so.waitSem(sTempInt);
+        TempInt.tempIntRoom3 = newTempInt;
+        so.signalSem(sTempInt);
+        break;
+
+      case 4:
+        so.waitSem(sTempInt);
+        TempInt.tempIntRoom4 = newTempInt;
+        so.signalSem(sTempInt);
+        break;
+
+      default:
+        break;
+    }
+
   }
 
 }
@@ -542,7 +629,7 @@ void ShareAdcValue() {
 
 void KeyDetector()
 {
-  typeMessageTemp MessageTemp;
+  typeMessageTemp MessageTemp1, MessageTemp2, MessageTemp3, MessageTemp4;
 
   while (1)
   {
@@ -556,57 +643,45 @@ void KeyDetector()
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       so.signalMBox(mbNumRoom, (byte*) &key);
     } else if (key == 8) { //Caso Tª exterior-> enviar valor key a través de CAN
-      MessageTemp.typeInfo = 8;
+      MessageTemp1.typeInfo = 8;
       term.println("caso key 8");
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
 
 
     } else if (key == 7) {
-      MessageTemp.typeInfo = 7;
-      MessageTemp.numRoom = 1;
+      MessageTemp1.typeInfo = 7;
+      MessageTemp1.numRoom = 1;
       term.println("caso key 7");
       so.waitSem(sTempInt);
-      MessageTemp.tempInt = TempInt.tempIntRoom1;
+      MessageTemp1.tempInt = TempInt.tempIntRoom1;
       so.signalSem(sTempInt);
 
-
-
-      // Send sensor via CAN
-      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
-
-
-      MessageTemp.numRoom = 2;
-
+      MessageTemp2.typeInfo = 7;
+      MessageTemp2.numRoom = 2;
       so.waitSem(sTempInt);
-      MessageTemp.tempInt = TempInt.tempIntRoom2;
+      MessageTemp2.tempInt = TempInt.tempIntRoom2;
       so.signalSem(sTempInt);
 
-      // Send sensor via CAN
-      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
-
-
-      MessageTemp.numRoom = 3;
+      MessageTemp3.typeInfo = 7;
+      MessageTemp3.numRoom = 3;
       so.waitSem(sTempInt);
-      MessageTemp.tempInt = TempInt.tempIntRoom3;
+      MessageTemp3.tempInt = TempInt.tempIntRoom3;
       so.signalSem(sTempInt);
 
-      // Send sensor via CAN
-      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
-
-
-      MessageTemp.numRoom = 4;
+      MessageTemp4.typeInfo = 7;
+      MessageTemp4.numRoom = 4;
       so.waitSem(sTempInt);
-      MessageTemp.tempInt = TempInt.tempIntRoom4;
+      MessageTemp4.tempInt = TempInt.tempIntRoom4;
       so.signalSem(sTempInt);
 
       // Send sensor via CAN
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp);
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
+      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp2);
+      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp3);
+      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp4);
 
     }
   }
@@ -705,6 +780,7 @@ void loop() {
 
     // Definition and initialization of mailboxes
     mbNumRoom = so.defMBox();
+    mbInfoTemp = so.defMBox();
 
     // Definition and initialization of flags
     fKeyEvent = so.defFlag();

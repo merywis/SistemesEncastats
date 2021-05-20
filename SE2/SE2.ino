@@ -132,7 +132,7 @@ void isrCAN()
 
   if (CAN.rxInterrupt())
   {
-    hib.ledToggle(RX_LED); // for debugging
+    //hib.ledToggle(RX_LED); // for debugging
 
     CAN.readRxMsg();
     switch (CAN.getRxMsgId())
@@ -175,17 +175,40 @@ void PrintTemp()
   float auxTempExt;
   boolean auxMomentDay;
   String momentOfDay;
- char strDay[3] = "day";
- char strNight[5] = "night";
- 
+  //char strDay[3] = {'d','a','y'};
+  //char strNight[5] ={'n','i','g','h','t'};
+  char momDay[5];
+  float arrayTempInt[4];
+
+  char charBuff[10];
+  char floatBuffer[6];
+
   while (true) {
     // Wait until any of the bits of the flag fCANevent
     // indicated by the bits of maskRxSensorEvent are set to '1'
     so.waitFlag(fCANPrintEvent, maskRxPrintTExtEvent);
     // Clear the maskRxSensorEvent bits of flag fCANEvent to not process the same event twice
     so.clearFlag(fCANPrintEvent, maskRxPrintTExtEvent);
+Serial.println("ha llegado un mensaje");
+    so.waitSem(sTime);
+
+    auxMomentDay = momentDay;
+
+    so.signalSem(sTime);
+    /*
+        memset(momDay, "", sizeof(momDay));
+
+        if (auxMomentDay == true) {
+          hib.lcdPrint("day");
+          momDay = {'d', 'a', 'y'};
+        } else {
+          hib.lcdPrint("night");
+          momDay = {'n', 'i', 'g', 'h', 't'};
+        }
+    */
 
     auxRxMessageTemp = rxMessageTemp;
+
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
 
       so.waitSem(sTempExt);
@@ -194,38 +217,65 @@ void PrintTemp()
 
       so.signalSem(sTempExt);
 
+      // The LCD is a critial region itself (shared between PrintTemp and Alarm)
+      so.waitSem(sLCD);
+
+      hib.lcdClear();
+      hib.lcdSetCursorFirstLine();
+      if (auxMomentDay) {
+        hib.lcdPrint("day");
+      } else {
+        hib.lcdPrint("night");
+      }
+
+      hib.lcdSetCursorSecondLine();
+      dtostrf(auxTempExt, 1, 2, floatBuffer);
+      sprintf(charBuff, "Temp Ext: %s    ", floatBuffer);
+      hib.lcdPrint(charBuff);
+
+
+      so.signalSem(sLCD);
 
 
     } else if (auxRxMessageTemp.typeInfo == 7) {
+      arrayTempInt[auxRxMessageTemp.numRoom - 1] = auxRxMessageTemp.tempInt;
 
+hib.ledToggle(1); // for debugging
+      
+      if (auxRxMessageTemp.numRoom == 4) {
+        hib.ledToggle(4); // for debugging
+        // The LCD is a critial region itself (shared between PrintTemp and Alarm)
+        so.waitSem(sLCD);
+
+        hib.lcdClear();
+        hib.lcdSetCursorFirstLine();
+hib.ledToggle(1); // for debugging
+        dtostrf(arrayTempInt[0], 1, 2, floatBuffer);
+        sprintf(charBuff, "1: %s    ", floatBuffer);
+        hib.lcdPrint(charBuff);
+hib.ledToggle(2); // for debugging
+        dtostrf(arrayTempInt[1], 1, 2, floatBuffer);
+        sprintf(charBuff, "2: %s    ", floatBuffer);
+        hib.lcdPrint(charBuff);
+        
+        hib.lcdSetCursorSecondLine();
+        hib.ledToggle(3); // for debugging
+        dtostrf(arrayTempInt[2], 1, 2, floatBuffer);
+        sprintf(charBuff, "3: %s    ", floatBuffer);
+        hib.lcdPrint(charBuff);
+hib.ledToggle(4); // for debugging
+        dtostrf(arrayTempInt[3], 1, 2, floatBuffer);
+        sprintf(charBuff, "4: %s    ", floatBuffer);
+        hib.lcdPrint(charBuff);
+
+        so.signalSem(sLCD);
+
+
+      }
 
     }
 
 
-    so.waitSem(sTime);
-
-    auxMomentDay = momentDay;
-
-    so.signalSem(sTime);
-
-
- 
-  if(auxMomentDay == true){
-    hib.lcdPrint("dia");
-  }else{
-   hib.lcdPrint("noche");
-  }
-  
-    // The LCD is a critial region itself (shared between PrintTemp and Alarm)
-    so.waitSem(sLCD);
-   // hib.ledToggle(5);
-    //sprintf(str, "%u", auxTempExt);
-    
-    hib.lcdClear();
-    //substituir por un char 
-    hib.lcdPrint("holi");
-    
-    so.signalSem(sLCD);
 
   }
 }
@@ -240,10 +290,6 @@ void DetectTempExt()
   {
 
     celsius = hib.temReadCelsius(hib.LEFT_TEM_SENS);
-
-    Serial.print("Left temperature sensor -> celsius = ");
-    Serial.println(celsius);
-    hib.ledToggle(2); // for debugging
 
     so.waitSem(sTempExt);
 
@@ -260,6 +306,7 @@ void DetectTempExt()
   }
 
 }
+
 void TimetableHeating()
 {
   unsigned long nextActivationTick;
@@ -280,6 +327,10 @@ void TimetableHeating()
       light = true;
     }
 
+    //Se lo enviamos a ShareTime
+    so.signalMBox(mbLight, (byte*) &light);
+
+    //CAN
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
 
