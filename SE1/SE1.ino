@@ -34,21 +34,13 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_LIGHT 3
 
 
-#define PERIOD_TASK_STATE 3
-#define PERIOD_TASK_INSERTCOMANDOS 2
+#define PERIOD_TASK_STATE 10
+#define PERIOD_TASK_INSERTCOMANDOS 3
 
 
 /******************************************************************************/
 /** Global const and variables ************************************************/
 /******************************************************************************/
-
-volatile uint8_t key = 0;
-volatile float rxTemp = 0.0; //tienen q ser globales ? :(
-volatile boolean rxTime = false; //tienen q ser globales ? :(
-
-volatile float TempExt = 0.0; //tienen q ser globales ? :(
-volatile boolean MomentDay = false;
-
 // stores every new adc adquired value
 // shared between: adchook (writes) and ShareAdcValue (reads)
 volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdcValue
@@ -57,6 +49,20 @@ volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdc
 // calculated upon adcValue
 // shared between ShareAdcValue (writes) and InsertTemp (reads)
 volatile float sampledAdc = 0.0; // critical region between ShareAdcValue and InsertTemp
+
+
+
+
+
+volatile uint8_t key;
+volatile float rxTemp = 0.0; //tienen q ser globales ? :(
+volatile boolean rxTime = false; //tienen q ser globales ? :(
+
+volatile float TempExt = 24.0; //tienen q ser globales ? :(
+volatile boolean MomentDay = false;
+
+
+
 
 
 
@@ -80,12 +86,12 @@ const unsigned char maskRxTimeEvent = 0x02; // represents new adc value adquired
 /*********
   Declaration of semaphores
 *********/
-
+Sem sSampledAdc;
 Sem sTempInt;
 Sem sTime;
 Sem sTempExt;
 Sem sGoal;
-Sem sSampledAdc;
+Sem sCanControl;
 
 
 /*********
@@ -101,9 +107,9 @@ MBox mbInfoTemp;
 
 struct structRoom
 {
-  float tempGoal; //
-  float tempInt; //
-  float actuacion;
+  float tempGoal = 21.0; //
+  float tempInt = 23.0; //
+  float actuacion = 25.0;
   float tempMaxDay = 0.0;
   float tempMinDay = 0.0;
   float tempMaxNight = 0.0;
@@ -126,7 +132,7 @@ typedef structState typeState;
 
 struct structGoal
 {
-  uint8_t numRoom = 0; // Number of edition
+  uint8_t numRoom = 1; // Number of edition
   float tempGoal = 21.00; // Number of edition
 };
 typedef structGoal typeGoal;
@@ -190,7 +196,6 @@ typedef structTempInfo typeTempInfo;
 ******************/
 void keyHook(uint8_t newKey)
 {
-
   key = newKey;
 
   so.setFlag(fKeyEvent, maskKeyEvent);
@@ -204,8 +209,8 @@ void keyHook(uint8_t newKey)
 void adcHook(uint16_t newAdcAdquiredValue)
 {
   adcValue = newAdcAdquiredValue;
-
-  hib.ledToggle(4); // for debugging
+   Serial.println("adc Hook: ");
+    Serial.println(adcValue);
 
   // Awake task A by setting to '1' the bits of fExtEvent indicated by maskAdcEvent
   so.setFlag(fAdcEvent, maskAdcEvent);
@@ -243,8 +248,6 @@ void isrCAN()
 
   if (CAN.rxInterrupt())
   {
-    hib.ledToggle(RX_LED); // for debugging
-
     CAN.readRxMsg();
     switch (CAN.getRxMsgId())
     {
@@ -296,7 +299,6 @@ void State()
 
   while (true)
   {
-    Serial.println("estoy en la tareastate");
     // Read adcValue (shared with ShareAdcValue)
     so.waitSem(sTempExt);
 
@@ -310,7 +312,6 @@ void State()
     state.momentDay = MomentDay;
 
     so.signalSem(sTime);
-    Serial.println("antes wait goal");
     //Consigna
     so.waitSem(sGoal);
 
@@ -318,7 +319,6 @@ void State()
 
     so.signalSem(sGoal);
 
-    Serial.println("dsps wait goal");
 
     //Actualizar el valor
     switch (numRoom)
@@ -355,9 +355,14 @@ void State()
     so.signalSem(sTempInt);
 
     //Calculo de la Actuación
-    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0, 2 * state.tempExt - 0, 2 * state.datosRoom1.tempInt) / 0, 6;
-    Serial.print("actuacion: ");
-    Serial.println( state.datosRoom1.actuacion);
+    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom1.tempInt) / 0.6;
+    state.datosRoom2.actuacion = (state.datosRoom2.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom2.tempInt) / 0.6;
+    state.datosRoom3.actuacion = (state.datosRoom3.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom3.tempInt) / 0.6;
+    state.datosRoom4.actuacion = (state.datosRoom4.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom4.tempInt) / 0.6;
+
+
+    //Serial.print("actuacion: ");
+    //Serial.println( state.datosRoom1.actuacion);
 
     //Consultar Límites
     if (state.momentDay) { //caso límites día
@@ -443,23 +448,16 @@ void SimulateTempInt()
 
   while (true) {
     so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
-Serial.println("som a simulate temp int");
     infoSimulateTemp = *rxStructInfoMessage;
 
-    //PONER PRINTS 
-    Serial.print("Actuacion: ");
-    Serial.println(infoSimulateTemp.actuacion);
-
-    Serial.print("Temp Ext: ");
-    Serial.println(infoSimulateTemp.tempExt);
-
-    Serial.print("Temp Int: ");
-    Serial.println(infoSimulateTemp.tempInt);
-    
     //Formula de la Actuación
-    newTempInt = 0.5 * infoSimulateTemp.actuacion + 0,25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
-    Serial.print("new temp int: ");
+    newTempInt = 0.5 * infoSimulateTemp.actuacion + 0.25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
+    Serial.print("Habitacion: ");
+    Serial.print(infoSimulateTemp.nomRoom);
+    
+    Serial.print("   New Temp Int: ");
     Serial.println(newTempInt);
+    Serial.println("******************");
     //Actualizamos el valor
     switch (infoSimulateTemp.nomRoom)
     {
@@ -503,6 +501,7 @@ void Share() {
 
   while (true)
   {
+
     // Wait until any of the bits of the flag fSincro
     // indicated by the bits of maskAlarm or maskNotAlarm are set to '1'
     so.waitFlag(fCANEvent, mask);
@@ -512,12 +511,10 @@ void Share() {
 
     // Clear the mask bits of flag fSincro to not process the same event twice
     so.clearFlag(fCANEvent, mask);
-
     // distinguish whether the event has been alarm or not alarm
     switch (flagValue)
     {
       case maskRxTempExtEvent:
-        Serial.println("maskRxTempExtEvent");
 
         // Read adcValue (shared with ShareAdcValue)
         so.waitSem(sTempExt);
@@ -529,7 +526,6 @@ void Share() {
         break;
 
       case maskRxTimeEvent:
-        Serial.println("maskRxTimeEvent");
         so.waitSem(sTime);
 
         MomentDay = rxTime;
@@ -549,28 +545,21 @@ void InsertTemp() {
 
   uint8_t * rxNumRoomMessage;
 
-  char str[16];
-
   while (true) {
-    // Wait until receiving the new state from TaskState
+    // Wait until receiving the new state from KeyDetector
     so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
-    hib.ledToggle(1);
 
-    Goal.numRoom = *rxNumRoomMessage;
-    Goal.numRoom = Goal.numRoom + 1;
+    Goal.numRoom = *rxNumRoomMessage +1;
 
-    sprintf(str, "%u", Goal.numRoom);
-    hib.lcdClear();
-    hib.lcdPrint(str);
-
+   
     // Read adcValue (shared with ShareAdcValue)
+    Serial.println("A W 2");
     so.waitSem(sSampledAdc);
 
     Goal.tempGoal = sampledAdc;
-    hib.ledToggle(2);
 
     so.signalSem(sSampledAdc);
-
+   
     Serial.print("Habitacion: ");
     Serial.println(Goal.numRoom);
 
@@ -600,28 +589,19 @@ void ShareAdcValue() {
     so.clearFlag(fAdcEvent, maskAdcEvent);
 
     auxAdcValue = adcValue;
+    Serial.print("****auxAdcAdc: ");
+    Serial.println(auxAdcValue);
     // Get value and map it in range [-10, 40] -> mapeam es valor q estava entre (0,1023) a [-10, 40]
     //1023 * x = 50 -> x = 0,04887586
     auxSampledAdc = (((float) auxAdcValue) * 0.04887585) - 10;
 
-    //Serial.println(auxSampledAdc);
-
-    /*
-      dtostrf(auxSampledAdc, 3, 2, floatBuffer);
-      sprintf(charBuff,"Temp : %d", floatBuffer);
-      hib.lcdPrint(charBuff);
-
-      delay(5000);
-      hib.lcdClear();
-    */
-
+    Serial.println("A w");
     so.waitSem(sSampledAdc);
 
     sampledAdc = auxSampledAdc;
 
     so.signalSem(sSampledAdc);
-
-
+    Serial.println("D w");
   }
 }
 
@@ -633,59 +613,79 @@ void KeyDetector()
 
   while (1)
   {
-    // Wait until any of the bits of the flag fExtEvent
-    // indicated by the bits of maskAdcEvent are set to '1'
+    // Wait until any of the bits of the flag fKeyEvent
+    // indicated by the bits of maskKeyEvent are set to '1'
     so.waitFlag(fKeyEvent, maskKeyEvent);
 
-    // Clear the flag fExtEvent to not process the same event twice
+    // Clear the flag fKeyEvent to not process the same event twice
     so.clearFlag(fKeyEvent, maskKeyEvent);
 
+    //distinguimos los diferentes posibles casos:
     if (key == 0 || key == 1 || key == 2 || key == 3) {
+      //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
       so.signalMBox(mbNumRoom, (byte*) &key);
-    } else if (key == 8) { //Caso Tª exterior-> enviar valor key a través de CAN
+
+    } else if (key == 8) {
+      //Caso Tª exterior-> enviar valor key a través de CAN
+      //Rellenamos el campo necesario en el struct MessageTemp1 para indicar que lo que se desea imprimir es la Tª ext
       MessageTemp1.typeInfo = 8;
-      term.println("caso key 8");
       // Send sensor via CAN
+
+      //*******************semaforoooooooooooooooooo
+
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
 
 
     } else if (key == 7) {
+      //Aquí deseamos imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe en un único "envío", vamos a enviar
+      //un mensaje por cada habitación
+
+      //Información habitación 1
       MessageTemp1.typeInfo = 7;
       MessageTemp1.numRoom = 1;
-      term.println("caso key 7");
+
       so.waitSem(sTempInt);
       MessageTemp1.tempInt = TempInt.tempIntRoom1;
       so.signalSem(sTempInt);
 
+      //Información habitación 2
       MessageTemp2.typeInfo = 7;
       MessageTemp2.numRoom = 2;
+
       so.waitSem(sTempInt);
       MessageTemp2.tempInt = TempInt.tempIntRoom2;
       so.signalSem(sTempInt);
 
+      //Información habitación 3
       MessageTemp3.typeInfo = 7;
       MessageTemp3.numRoom = 3;
+
       so.waitSem(sTempInt);
       MessageTemp3.tempInt = TempInt.tempIntRoom3;
       so.signalSem(sTempInt);
 
+      //Información habitación 4
       MessageTemp4.typeInfo = 7;
       MessageTemp4.numRoom = 4;
+
       so.waitSem(sTempInt);
       MessageTemp4.tempInt = TempInt.tempIntRoom4;
       so.signalSem(sTempInt);
 
       // Send sensor via CAN
+
+      //**********semaforoooooooooooo
+
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
-      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp2);
-      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp3);
-      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp4);
-
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp2);
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp3);
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp4);
     }
   }
 }
+
 
 void InsertComandos()
 {
@@ -745,7 +745,7 @@ void setup() {
   hib.lcdClear();
 
   // Init can bus : baudrate = 500k, loopback mode, enable reception and transmission interrupts
-  while (CAN.begin(CAN_500KBPS, MODE_NORMAL, false, false) != CAN_OK) {
+  while (CAN.begin(CAN_500KBPS, MODE_NORMAL, true, false) != CAN_OK) {
     Serial.println("CAN BUS Shield init fail");
     Serial.println(" Init CAN BUS Shield again");
     delay(100);
@@ -771,12 +771,12 @@ void loop() {
     Serial.println("Por ejemplo: 2 27 17 dia");
 
     // Definition and initialization of semaphores
+     sSampledAdc = so.defSem(1); // intially accesible
     sTempInt = so.defSem(1); // intially accesible
     sTime = so.defSem(1); // intially accesible
     sTempExt = so.defSem(1); // intially accesible
     sGoal = so.defSem(1); // intially accesible
-    sSampledAdc = so.defSem(1); // intially accesible
-
+    sCanControl = so.defSem(1); // intially accesible
 
     // Definition and initialization of mailboxes
     mbNumRoom = so.defMBox();
@@ -798,7 +798,7 @@ void loop() {
     so.defTask(SimulateTempInt, PRIO_TASK_SIMULATE_TEMP_INT);
 
     //Set up adc
-    hib.adcSetTimerDriven(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, adcHook);
+    hib.adcSetTimerDriven(TIMER_TICKS_FOR_500ms, (tClkPreFactType) TIMER_PSCALER_FOR_500ms, adcHook);
 
     //Set up timer 5 so that the SO can regain the CPU every tick
     hib.setUpTimer5(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, timer5Hook);

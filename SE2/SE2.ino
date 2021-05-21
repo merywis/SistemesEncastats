@@ -31,8 +31,8 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PRIO_TASK_TIMETABLE_HEATING 4
 #define PRIO_TASK_SHARE_TIME 5
 
-#define PERIOD_TASK_DETECT_TEMP_EXT 5
-#define PERIOD_TASK_TIMETABLE_HEATING 5
+#define PERIOD_TASK_DETECT_TEMP_EXT 10
+#define PERIOD_TASK_TIMETABLE_HEATING 10
 
 
 
@@ -297,6 +297,8 @@ void DetectTempExt()
 
     so.signalSem(sTempExt);
 
+Serial.print("celsius:");
+Serial.println(celsius);
 
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_TEMP_EXT, CAN_EXTID, sizeof(float), (INT8U *)  &celsius);
