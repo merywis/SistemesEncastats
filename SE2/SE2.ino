@@ -25,7 +25,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
-
+#define CAN_ID_ALARM 4
 
 #define PRIO_TASK_DETECT_TEMP_EXT 3
 #define PRIO_TASK_TIMETABLE_HEATING 4
@@ -52,7 +52,7 @@ Flag fCANPrintEvent;
 
 
 // Masks
-const unsigned char maskRxPrintTExtEvent = 0x01; // represents reception of sensor via CAN
+const unsigned char maskRxPrintEvent = 0x01; // represents reception of sensor via CAN
 
 
 /*********
@@ -61,6 +61,7 @@ const unsigned char maskRxPrintTExtEvent = 0x01; // represents reception of sens
 Sem sTempExt;
 Sem sTime;
 Sem sLCD;
+Sem sCanCtrl;
 
 /*********
   Declaration of mailboxes
@@ -139,7 +140,8 @@ void isrCAN()
     {
       case CAN_ID_PRINT_TEMP:
         CAN.getRxMsgData((byte*) &rxMessageTemp);
-        so.setFlag(fCANPrintEvent, maskRxPrintTExtEvent);
+        so.setFlag(fCANPrintEvent, maskRxPrintEvent);
+          Serial.println("isr");
         break;
 
       default:
@@ -184,33 +186,23 @@ void PrintTemp()
   char floatBuffer[6];
 
   while (true) {
-    // Wait until any of the bits of the flag fCANevent
-    // indicated by the bits of maskRxSensorEvent are set to '1'
-    so.waitFlag(fCANPrintEvent, maskRxPrintTExtEvent);
-    // Clear the maskRxSensorEvent bits of flag fCANEvent to not process the same event twice
-    so.clearFlag(fCANPrintEvent, maskRxPrintTExtEvent);
-Serial.println("ha llegado un mensaje");
+    // Wait until any of the bits of the flag fCANPrintEvent
+    // indicated by the bits of maskRxPrintEvent are set to '1'
+    so.waitFlag(fCANPrintEvent, maskRxPrintEvent);
+
+    // Clear the maskRxPrintEvent bits of flag fCANPrintEvent to not process the same event twice
+    so.clearFlag(fCANPrintEvent, maskRxPrintEvent);
+    auxRxMessageTemp = rxMessageTemp;
+
     so.waitSem(sTime);
 
     auxMomentDay = momentDay;
 
     so.signalSem(sTime);
-    /*
-        memset(momDay, "", sizeof(momDay));
 
-        if (auxMomentDay == true) {
-          hib.lcdPrint("day");
-          momDay = {'d', 'a', 'y'};
-        } else {
-          hib.lcdPrint("night");
-          momDay = {'n', 'i', 'g', 'h', 't'};
-        }
-    */
-
-    auxRxMessageTemp = rxMessageTemp;
-
+    //Distinguimos qué tipo de Tª hay q imprimir:
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
-
+  Serial.println("caso temp ext");
       so.waitSem(sTempExt);
 
       auxTempExt = TempExt;
@@ -233,50 +225,46 @@ Serial.println("ha llegado un mensaje");
       sprintf(charBuff, "Temp Ext: %s    ", floatBuffer);
       hib.lcdPrint(charBuff);
 
-
       so.signalSem(sLCD);
 
 
     } else if (auxRxMessageTemp.typeInfo == 7) {
+        Serial.println("caso temp ints");
       arrayTempInt[auxRxMessageTemp.numRoom - 1] = auxRxMessageTemp.tempInt;
 
-hib.ledToggle(1); // for debugging
-      
+      // hib.ledToggle(1); // for debugging
+
       if (auxRxMessageTemp.numRoom == 4) {
-        hib.ledToggle(4); // for debugging
+        // hib.ledToggle(4); // for debugging
         // The LCD is a critial region itself (shared between PrintTemp and Alarm)
         so.waitSem(sLCD);
 
         hib.lcdClear();
         hib.lcdSetCursorFirstLine();
-hib.ledToggle(1); // for debugging
+
         dtostrf(arrayTempInt[0], 1, 2, floatBuffer);
-        sprintf(charBuff, "1: %s    ", floatBuffer);
+        sprintf(charBuff, "1:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
-hib.ledToggle(2); // for debugging
+
         dtostrf(arrayTempInt[1], 1, 2, floatBuffer);
-        sprintf(charBuff, "2: %s    ", floatBuffer);
+        sprintf(charBuff, "2:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
-        
+Serial.print("arrayTempInt[3]: ");
+Serial.println(arrayTempInt[1]);
         hib.lcdSetCursorSecondLine();
-        hib.ledToggle(3); // for debugging
+
         dtostrf(arrayTempInt[2], 1, 2, floatBuffer);
-        sprintf(charBuff, "3: %s    ", floatBuffer);
+        sprintf(charBuff, "3:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
-hib.ledToggle(4); // for debugging
+
         dtostrf(arrayTempInt[3], 1, 2, floatBuffer);
-        sprintf(charBuff, "4: %s    ", floatBuffer);
+        sprintf(charBuff, "4:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
 
         so.signalSem(sLCD);
-
-
       }
 
     }
-
-
-
   }
 }
 
@@ -297,11 +285,15 @@ void DetectTempExt()
 
     so.signalSem(sTempExt);
 
-Serial.print("celsius:");
-Serial.println(celsius);
+    //Serial.print("celsius:");
+    //Serial.println(celsius);
+
+    so.waitSem(sCanCtrl);
 
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_TEMP_EXT, CAN_EXTID, sizeof(float), (INT8U *)  &celsius);
+
+    so.signalSem(sCanCtrl);
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_DETECT_TEMP_EXT; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
@@ -313,28 +305,34 @@ void TimetableHeating()
 {
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
+
   uint16_t ldrAdcValue;
   boolean light;
 
   while (true)
   {
     // Sample left-handed LDR (Light-Dependant Resistor) sensor
-    ldrAdcValue = hib.ldrReadAdc(hib.LEFT_LDR_SENS); //Aquí mos retorna el valor en el rang
-    //de ADC i noltros haurem de mapear-ho en els valors que necessitem.
-    Serial.print("Left ldr sensor -> adc = ");
-    Serial.println(ldrAdcValue);
+    ldrAdcValue = hib.ldrReadAdc(hib.LEFT_LDR_SENS); //Aquí mos retorna el valor en el rang adc 0-1024
+    //Serial.print("Left ldr sensor -> adc = ");
+   // Serial.println(ldrAdcValue);
+
+    //ara ho haurem de mapear en els valors que necessitem.
     if (ldrAdcValue < 512) {
       light = false;
     } else {
       light = true;
     }
-
+    
     //Se lo enviamos a ShareTime
     so.signalMBox(mbLight, (byte*) &light);
+
+    so.waitSem(sCanCtrl);
 
     //CAN
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
+
+    so.signalSem(sCanCtrl);
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
@@ -344,7 +342,6 @@ void TimetableHeating()
 
 void ShareTime()
 {
-
   boolean * rxLight;
 
   while (true) {
@@ -412,6 +409,7 @@ void loop() {
     sTempExt = so.defSem(1); // intially accesible
     sTime = so.defSem(1); // intially accesible
     sLCD = so.defSem(1); // intially accesible
+    sCanCtrl = so.defSem(1); // intially accesible
 
     // Definition and initialization of mailboxes
     mbLight = so.defMBox();

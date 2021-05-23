@@ -32,6 +32,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
+#define CAN_ID_ALARM 4
 
 
 #define PERIOD_TASK_STATE 10
@@ -50,21 +51,13 @@ volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdc
 // shared between ShareAdcValue (writes) and InsertTemp (reads)
 volatile float sampledAdc = 0.0; // critical region between ShareAdcValue and InsertTemp
 
-
-
-
-
 volatile uint8_t key;
+
 volatile float rxTemp = 0.0; //tienen q ser globales ? :(
 volatile boolean rxTime = false; //tienen q ser globales ? :(
 
 volatile float TempExt = 24.0; //tienen q ser globales ? :(
 volatile boolean MomentDay = false;
-
-
-
-
-
 
 /********************************
   Declaration of flags and masks
@@ -86,12 +79,14 @@ const unsigned char maskRxTimeEvent = 0x02; // represents new adc value adquired
 /*********
   Declaration of semaphores
 *********/
-Sem sSampledAdc;
+Sem sGoal;
+
 Sem sTempInt;
 Sem sTime;
 Sem sTempExt;
-Sem sGoal;
-Sem sCanControl;
+Sem sSampledAdc;
+Sem sLimites;
+Sem sCanCtrl;
 
 
 /*********
@@ -140,10 +135,10 @@ typedef structGoal typeGoal;
 typeGoal Goal;
 
 struct structLimitesRoom {
-  uint8_t maxDay = 0; // Number of edition
-  uint8_t maxNight = 0; // Number of edition
-  uint8_t minDay = 0; // Number of edition
-  uint8_t minNight = 0; // Number of edition
+  uint8_t maxDay = 30; // Number of edition
+  uint8_t maxNight = 28; // Number of edition
+  uint8_t minDay = 15; // Number of edition
+  uint8_t minNight = 17; // Number of edition
 };
 typedef structLimitesRoom typeLimitesRoom;
 
@@ -178,7 +173,7 @@ typedef structMessageTemp typeMessageTemp;
 
 struct structTempInfo
 {
-  uint8_t nomRoom;
+  uint8_t numRoom;
   float actuacion;
   float tempExt;
   float tempInt;
@@ -209,8 +204,6 @@ void keyHook(uint8_t newKey)
 void adcHook(uint16_t newAdcAdquiredValue)
 {
   adcValue = newAdcAdquiredValue;
-   Serial.println("adc Hook: ");
-    Serial.println(adcValue);
 
   // Awake task A by setting to '1' the bits of fExtEvent indicated by maskAdcEvent
   so.setFlag(fAdcEvent, maskAdcEvent);
@@ -293,57 +286,61 @@ void State()
   typeState state;
   typeTempInfo infoSimulateTemp;
   uint8_t numRoom = 0;
-  unsigned long nextActivationTick;
+  typeGoal auxGoal;
 
+  unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
 
   while (true)
   {
-    // Read adcValue (shared with ShareAdcValue)
+    // Read TempExt (shared with the task Share)
     so.waitSem(sTempExt);
 
     state.tempExt = TempExt;
 
     so.signalSem(sTempExt);
 
-    //Moment of the Day
+    // Read MomentDay (shared with the task Share)
     so.waitSem(sTime);
 
     state.momentDay = MomentDay;
 
     so.signalSem(sTime);
-    //Consigna
+
+    // Read TempExt (shared with the task Share)
     so.waitSem(sGoal);
 
-    numRoom = Goal.numRoom;
+    auxGoal = Goal;
 
     so.signalSem(sGoal);
 
 
     //Actualizar el valor
-    switch (numRoom)
+    switch (auxGoal.numRoom)
     {
       case 1:
-        state.datosRoom1.tempGoal = Goal.tempGoal;
+        state.datosRoom1.tempGoal = auxGoal.tempGoal;
+          Serial.print("state.datosRoom1.tempGoal: ");
+          Serial.println(auxGoal.tempGoal);
         break;
 
       case 2:
-        state.datosRoom2.tempGoal = Goal.tempGoal;
+        state.datosRoom2.tempGoal = auxGoal.tempGoal;
         break;
 
       case 3:
-        state.datosRoom3.tempGoal = Goal.tempGoal;
+        state.datosRoom3.tempGoal = auxGoal.tempGoal;
         break;
 
       case 4:
-        state.datosRoom4.tempGoal = Goal.tempGoal;
+        state.datosRoom4.tempGoal = auxGoal.tempGoal;
         break;
 
       default:
         break;
     }
 
-    //Temp Int de Cada Habitacion
+    //Update the inner temperature of each room
 
     so.waitSem(sTempInt);
 
@@ -354,7 +351,128 @@ void State()
 
     so.signalSem(sTempInt);
 
-    //Calculo de la Actuación
+    //actualizar limites con struct q viene de structLimites (InsertComandos) ************
+   /* so.waitSem(sLimites);
+    auxStructLimites = LimitesRooms;
+    so.signalSem(sLimites);
+
+    state.datosRoom1.tempMaxDay = auxStructLimites.limitesRoom1.maxDay;
+    state.datosRoom1.tempMinDay = auxStructLimites.limitesRoom1.minDay;
+    state.datosRoom1.tempMaxNight = auxStructLimites.limitesRoom1.maxNight;
+    state.datosRoom1.tempMinNight = auxStructLimites.limitesRoom1.minNight;
+
+    state.datosRoom2.tempMaxDay = auxStructLimites.limitesRoom2.maxDay;
+    state.datosRoom2.tempMinDay = auxStructLimites.limitesRoom2.minDay;
+    state.datosRoom2.tempMaxNight = auxStructLimites.limitesRoom2.maxNight;
+    state.datosRoom2.tempMinNight = auxStructLimites.limitesRoom2.minNight;
+
+    state.datosRoom3.tempMaxDay = auxStructLimites.limitesRoom3.maxDay;
+    state.datosRoom3.tempMinDay = auxStructLimites.limitesRoom3.minDay;
+    state.datosRoom3.tempMaxNight = auxStructLimites.limitesRoom3.maxNight;
+    state.datosRoom3.tempMinNight = auxStructLimites.limitesRoom3.minNight;
+
+    state.datosRoom4.tempMaxDay = auxStructLimites.limitesRoom4.maxDay;
+    state.datosRoom4.tempMinDay = auxStructLimites.limitesRoom4.minDay;
+    state.datosRoom4.tempMaxNight = auxStructLimites.limitesRoom4.maxNight;
+    state.datosRoom4.tempMinNight = auxStructLimites.limitesRoom4.minNight;
+
+    //Consultar Límites
+    if (state.momentDay) { //caso límites día
+
+      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
+        numRoom = 1;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxDay || state.datosRoom2.tempInt < state.datosRoom2.tempMinDay) {
+        numRoom = 2;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxDay || state.datosRoom3.tempInt < state.datosRoom3.tempMinDay) {
+        numRoom = 3;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxDay || state.datosRoom4.tempInt < state.datosRoom4.tempMinDay) {
+        numRoom = 4;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+    } else {
+
+      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxNight || state.datosRoom1.tempInt < state.datosRoom1.tempMinNight) {
+        numRoom = 1;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxNight || state.datosRoom2.tempInt < state.datosRoom2.tempMinNight) {
+        numRoom = 2;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxNight || state.datosRoom3.tempInt < state.datosRoom3.tempMinNight) {
+        numRoom = 3;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxNight || state.datosRoom4.tempInt < state.datosRoom4.tempMinNight) {
+        numRoom = 4;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
+
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+
+        so.signalSem(sCanCtrl);
+      }
+
+    }
+*/
+
+    //Cálculo de la Actuación
     state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom1.tempInt) / 0.6;
     state.datosRoom2.actuacion = (state.datosRoom2.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom2.tempInt) / 0.6;
     state.datosRoom3.actuacion = (state.datosRoom3.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom3.tempInt) / 0.6;
@@ -364,68 +482,29 @@ void State()
     //Serial.print("actuacion: ");
     //Serial.println( state.datosRoom1.actuacion);
 
-    //Consultar Límites
-    if (state.momentDay) { //caso límites día
-
-      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
-
-      }
-
-      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxDay || state.datosRoom2.tempInt < state.datosRoom2.tempMinDay) {
-
-      }
-
-      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxDay || state.datosRoom3.tempInt < state.datosRoom3.tempMinDay) {
-
-      }
-
-      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxDay || state.datosRoom4.tempInt < state.datosRoom4.tempMinDay) {
-
-      }
-
-    } else {
-
-      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxNight || state.datosRoom1.tempInt < state.datosRoom1.tempMinNight) {
-
-      }
-
-      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxNight || state.datosRoom2.tempInt < state.datosRoom2.tempMinNight) {
-
-      }
-
-      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxNight || state.datosRoom3.tempInt < state.datosRoom3.tempMinNight) {
-
-      }
-
-      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxNight || state.datosRoom4.tempInt < state.datosRoom4.tempMinNight) {
-
-      }
-
-    }
-
     //Transmitir Actuación
-    infoSimulateTemp.nomRoom = 1;
+    infoSimulateTemp.numRoom = 1;
     infoSimulateTemp.tempExt = state.tempExt;
     infoSimulateTemp.tempInt = state.datosRoom1.tempInt;
     infoSimulateTemp.actuacion = state.datosRoom1.actuacion;
 
     so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-    infoSimulateTemp.nomRoom = 2;
+    infoSimulateTemp.numRoom = 2;
     infoSimulateTemp.tempExt = state.tempExt;
     infoSimulateTemp.tempInt = state.datosRoom2.tempInt;
     infoSimulateTemp.actuacion = state.datosRoom2.actuacion;
 
     so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-    infoSimulateTemp.nomRoom = 3;
+    infoSimulateTemp.numRoom = 3;
     infoSimulateTemp.tempExt = state.tempExt;
     infoSimulateTemp.tempInt = state.datosRoom3.tempInt;
     infoSimulateTemp.actuacion = state.datosRoom3.actuacion;
 
     so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-    infoSimulateTemp.nomRoom = 4;
+    infoSimulateTemp.numRoom = 4;
     infoSimulateTemp.tempExt = state.tempExt;
     infoSimulateTemp.tempInt = state.datosRoom4.tempInt;
     infoSimulateTemp.actuacion = state.datosRoom4.actuacion;
@@ -440,26 +519,25 @@ void State()
 void SimulateTempInt()
 {
 
-
   typeTempInfo infoSimulateTemp;
   typeTempInfo * rxStructInfoMessage;
   float newTempInt;
-
 
   while (true) {
     so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
     infoSimulateTemp = *rxStructInfoMessage;
 
-    //Formula de la Actuación
+    //Formula de la nueva Tª interior
     newTempInt = 0.5 * infoSimulateTemp.actuacion + 0.25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
     Serial.print("Habitacion: ");
-    Serial.print(infoSimulateTemp.nomRoom);
-    
+    Serial.print(infoSimulateTemp.numRoom);
+
     Serial.print("   New Temp Int: ");
     Serial.println(newTempInt);
     Serial.println("******************");
+
     //Actualizamos el valor
-    switch (infoSimulateTemp.nomRoom)
+    switch (infoSimulateTemp.numRoom)
     {
       case 1:
         so.waitSem(sTempInt);
@@ -494,42 +572,42 @@ void SimulateTempInt()
 }
 
 void Share() {
-  // define a mask to awake either by maskAlarm or maskNotAlarm
+
+  // define a mask to awake either by maskRxTempExtEvent or maskRxTimeEvent
   unsigned char mask = (maskRxTempExtEvent | maskRxTimeEvent);
   // var to read flag value
   unsigned char flagValue;
 
   while (true)
   {
-
-    // Wait until any of the bits of the flag fSincro
-    // indicated by the bits of maskAlarm or maskNotAlarm are set to '1'
+    // Wait until any of the bits of the flag fCANEvent
+    // indicated by the bits of maskRxTempExtEvent or maskRxTimeEvent are set to '1'
     so.waitFlag(fCANEvent, mask);
 
     // read flag Value
     flagValue = so.readFlag(fCANEvent);
 
-    // Clear the mask bits of flag fSincro to not process the same event twice
+    // Clear the mask bits of flag fCANEvent to not process the same event twice
     so.clearFlag(fCANEvent, mask);
     // distinguish whether the event has been alarm or not alarm
     switch (flagValue)
     {
       case maskRxTempExtEvent:
 
-        // Read adcValue (shared with ShareAdcValue)
+        // Read rxTemp
         so.waitSem(sTempExt);
 
         TempExt = rxTemp;
-        hib.ledToggle(2);
 
         so.signalSem(sTempExt);
         break;
 
       case maskRxTimeEvent:
+
+        // Read rxTime
         so.waitSem(sTime);
 
         MomentDay = rxTime;
-        hib.ledToggle(2);
 
         so.signalSem(sTime);
         break;
@@ -549,17 +627,16 @@ void InsertTemp() {
     // Wait until receiving the new state from KeyDetector
     so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
 
-    Goal.numRoom = *rxNumRoomMessage +1;
+    Goal.numRoom = *rxNumRoomMessage + 1;
 
-   
+
     // Read adcValue (shared with ShareAdcValue)
-    Serial.println("A W 2");
     so.waitSem(sSampledAdc);
 
     Goal.tempGoal = sampledAdc;
 
     so.signalSem(sSampledAdc);
-   
+
     Serial.print("Habitacion: ");
     Serial.println(Goal.numRoom);
 
@@ -589,19 +666,16 @@ void ShareAdcValue() {
     so.clearFlag(fAdcEvent, maskAdcEvent);
 
     auxAdcValue = adcValue;
-    Serial.print("****auxAdcAdc: ");
-    Serial.println(auxAdcValue);
     // Get value and map it in range [-10, 40] -> mapeam es valor q estava entre (0,1023) a [-10, 40]
     //1023 * x = 50 -> x = 0,04887586
     auxSampledAdc = (((float) auxAdcValue) * 0.04887585) - 10;
 
-    Serial.println("A w");
+   
     so.waitSem(sSampledAdc);
 
     sampledAdc = auxSampledAdc;
 
     so.signalSem(sSampledAdc);
-    Serial.println("D w");
   }
 }
 
@@ -631,11 +705,12 @@ void KeyDetector()
       MessageTemp1.typeInfo = 8;
       // Send sensor via CAN
 
-      //*******************semaforoooooooooooooooooo
+      so.waitSem(sCanCtrl);
 
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
 
+      so.signalSem(sCanCtrl);
 
     } else if (key == 7) {
       //Aquí deseamos imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe en un único "envío", vamos a enviar
@@ -675,13 +750,14 @@ void KeyDetector()
 
       // Send sensor via CAN
 
-      //**********semaforoooooooooooo
-
-      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+      so.waitSem(sCanCtrl);
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING) 
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp2);
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp3);
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp4);
+      
+      so.signalSem(sCanCtrl);
     }
   }
 }
@@ -718,6 +794,10 @@ void InsertComandos()
       term.print( arraylimitesRoom[3]);
       i = 0;
     }
+    //Actualizamos el valor de la variable global...
+    so.waitSem(sLimites);
+    //structLimites.numRoom =
+    so.signalSem(sLimites);
 
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_INSERTCOMANDOS; // Calculate next activation time;
@@ -771,12 +851,14 @@ void loop() {
     Serial.println("Por ejemplo: 2 27 17 dia");
 
     // Definition and initialization of semaphores
-     sSampledAdc = so.defSem(1); // intially accesible
+    
+    sGoal = so.defSem(1); // intially accesible
     sTempInt = so.defSem(1); // intially accesible
     sTime = so.defSem(1); // intially accesible
     sTempExt = so.defSem(1); // intially accesible
-    sGoal = so.defSem(1); // intially accesible
-    sCanControl = so.defSem(1); // intially accesible
+    sSampledAdc = so.defSem(1); // intially accesible
+    sLimites = so.defSem(1); // intially accesible
+    sCanCtrl = so.defSem(1); // intially accesible
 
     // Definition and initialization of mailboxes
     mbNumRoom = so.defMBox();
