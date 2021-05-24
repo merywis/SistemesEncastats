@@ -320,8 +320,6 @@ void State()
     {
       case 1:
         state.datosRoom1.tempGoal = auxGoal.tempGoal;
-        Serial.print("state.datosRoom1.tempGoal: ");
-        Serial.println(auxGoal.tempGoal);
         break;
 
       case 2:
@@ -529,12 +527,12 @@ void SimulateTempInt()
 
     //Formula de la nueva Tª interior
     newTempInt = 0.5 * infoSimulateTemp.actuacion + 0.25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
-    Serial.print("Habitacion: ");
+    /*Serial.print("Habitacion: ");
     Serial.print(infoSimulateTemp.numRoom);
 
     Serial.print("   New Temp Int: ");
     Serial.println(newTempInt);
-    Serial.println("******************");
+    Serial.println("******************");*/
 
     //Actualizamos el valor
     switch (infoSimulateTemp.numRoom)
@@ -766,7 +764,7 @@ void KeyDetector()
 void InsertComandos()
 {
   char c;
-  uint8_t room;
+  int room;
   float tempMin;
   float tempMax;
   char moment;
@@ -787,10 +785,12 @@ void InsertComandos()
       switch (turno)
       {
         case 0:
-          if (c == 1 || c == 2 || c == 3 || c == 4) { // Maybe hay que poner c == '4'
-            room = c;
+        //1 = 49 2 = 50
+          if (c == '1' || c == '2' || c == '3' || c == '4') { 
+            room = (int)c-48;
             turno++;
-            Serial.println("Habitacion Seleccionada Correctamente");
+            Serial.print("Habitacion Seleccionada Correctamente: ");
+             Serial.println(room);
           } else {
             Serial.println("Error en la Seleccion de Habitación");
           }
@@ -807,20 +807,22 @@ void InsertComandos()
           break;
 
         case 2:
-          if (c == '0' || c == '.') { // Hay que poner c == term.Numero pero no se si eso existe
-            if (i == 0) {
-              tempMax = tempMax + (c * 10);
+          if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') {          
+            if (i == 0) { //cogemos el primer valor (decenas)
+              tempMax= 0;
+              tempMax = tempMax + (((int)c-48) * 10);
               i = i + 1;
-            } else if (i == 1) {
-              tempMax = tempMax + c;
+            } else if (i == 1) { //unidades
+              tempMax = tempMax + (int)c-48;
               i = i + 1;
-            } else if (i == 2) {
+            } else if (i == 2) { //'.'
               i = i + 1;          
-            } else {
-              tempMax = tempMax + (c / 10);
+            } else {  //decimales
+              tempMax = tempMax + (((float) ((int)c-48)) / 10);
               i = 0;
               turno++;
-              Serial.println("Temperatura Maxima Seleccionada Correctamente");
+              Serial.print("Temperatura Maxima Seleccionada Correctamente: ");
+              Serial.println(tempMax);
             }
 
           } else {
@@ -833,28 +835,30 @@ void InsertComandos()
         case 3:
           if (c == ' ') { //El espacio
             turno++;
-            Serial.println("FIN Habitacion Seleccionada Correctamente");
+            Serial.println("FIN Temperatura Maxima Seleccionada Correctamente");
           } else {
             turno = 0;
-            Serial.println("Error en FIN Seleccion de Habitación");
+            Serial.println("Error en FIN Seleccion de Temperatura Maxima");
           }
           break;
 
         case 4:
-          if (c == '0' || c == '.') { // Hay que poner c == term.Numero pero no se si eso existe
+          if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') { 
             if (i == 0) {
-              tempMin = tempMin + (c * 10);
+              tempMin = 0;
+              tempMin = tempMin + (((int)c-48) * 10);
               i = i + 1;
             } else if (i == 1) {
-              tempMin = tempMin + c;
+              tempMin = tempMin + (int)c-48;
               i = i + 1;
             } else if (i == 2) {
               i = i + 1;          
             } else {
-              tempMin = tempMin + (c / 10);
+              tempMin = tempMin +(((float) ((int)c-48)) / 10);
               i = 0;
               turno++;
-              Serial.println("Temperatura Minima Seleccionada Correctamente");
+              Serial.print("Temperatura Minima Seleccionada Correctamente: ");
+              Serial.println(tempMin);
             }
 
           } else {
@@ -866,10 +870,10 @@ void InsertComandos()
         case 5:
           if (c == ' ') { //El espacio
             turno++;
-            Serial.println("FIN Habitacion Seleccionada Correctamente");
+            Serial.println("FIN Temperatura Minima Seleccionada Correctamente");
           } else {
             turno = 0;
-            Serial.println("Error en FIN Seleccion de Habitación");
+            Serial.println("Error en FIN Seleccion de Temperatura Minima");
           }
           break;
 
@@ -883,7 +887,8 @@ void InsertComandos()
             //structLimites.numRoom =
             so.signalSem(sLimites);
             
-            Serial.println("FIN Momenot del DIa Seleccionada Correctamente");
+            Serial.println("FIN Momenot del DIa Seleccionada Correctamente: ");
+             Serial.println(c);
           } else {
             turno = 0;
             Serial.println("Error en el Momento del dia");
