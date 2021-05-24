@@ -814,6 +814,8 @@ void InsertComandos()
             } else if (i == 1) {
               tempMax = tempMax + c;
               i = i + 1;
+            } else if (i == 2) {
+              i = i + 1;          
             } else {
               tempMax = tempMax + (c / 10);
               i = 0;
@@ -846,6 +848,8 @@ void InsertComandos()
             } else if (i == 1) {
               tempMin = tempMin + c;
               i = i + 1;
+            } else if (i == 2) {
+              i = i + 1;          
             } else {
               tempMin = tempMin + (c / 10);
               i = 0;
