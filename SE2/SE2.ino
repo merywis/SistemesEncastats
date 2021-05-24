@@ -249,8 +249,8 @@ void PrintTemp()
         dtostrf(arrayTempInt[1], 1, 2, floatBuffer);
         sprintf(charBuff, "2:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
-Serial.print("arrayTempInt[3]: ");
-Serial.println(arrayTempInt[1]);
+        Serial.print("arrayTempInt[3]: ");
+        Serial.println(arrayTempInt[1]);
         hib.lcdSetCursorSecondLine();
 
         dtostrf(arrayTempInt[2], 1, 2, floatBuffer);
@@ -272,8 +272,8 @@ void DetectTempExt()
 {
   float celsius;
   unsigned long nextActivationTick;
-
   nextActivationTick = so.getTick();
+  
   while (true)
   {
 

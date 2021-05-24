@@ -20,11 +20,12 @@ MCP_CAN CAN(SPI_CS_PIN);
 /** DEFINE ********************************************************************/
 /******************************************************************************/
 #define NUM_ROOM 4
-#define PRIO_TASK_STATE 1
+
+#define PRIO_TASK_STATE 8
 #define PRIO_TASK_SIMULATE_TEMP_INT 2
 #define PRIO_TASK_KeyDetector 3
 #define PRIO_TASK_ShareAdcValue 4
-#define PRIO_TASK_InsertTemp 5
+#define PRIO_TASK_InsertTemp 2
 #define PRIO_TASK_InsertComandos 6
 #define PRIO_TASK_SHARE 7
 
@@ -38,7 +39,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PERIOD_TASK_STATE 10
 #define PERIOD_TASK_INSERTCOMANDOS 3
 
-
+//prioridades - stacksize 256 - ir comentando y descomentando tasks - periodo
 /******************************************************************************/
 /** Global const and variables ************************************************/
 /******************************************************************************/
@@ -80,11 +81,12 @@ const unsigned char maskRxTimeEvent = 0x02; // represents new adc value adquired
   Declaration of semaphores
 *********/
 Sem sGoal;
-
+//Sem sSampledAdc;
 Sem sTempInt;
 Sem sTime;
 Sem sTempExt;
 Sem sSampledAdc;
+//Sem sGoal;
 Sem sLimites;
 Sem sCanCtrl;
 
@@ -125,6 +127,8 @@ struct structState
 typedef structState typeState;
 
 
+//********* typeRoom arrayDatosRooms[4]
+
 struct structGoal
 {
   uint8_t numRoom = 1; // Number of edition
@@ -153,6 +157,7 @@ struct structLimites
 };
 typedef structLimites typeLimites;
 
+//********* typeLimitesRoom arrayLimites[4]
 struct structTempInt
 {
   float tempIntRoom1 = 26.0;
@@ -296,61 +301,62 @@ void State()
     // Read TempExt (shared with the task Share)
     so.waitSem(sTempExt);
 
-    state.tempExt = TempExt;
+      state.tempExt = TempExt;
 
-    so.signalSem(sTempExt);
+      so.signalSem(sTempExt);
 
-    // Read MomentDay (shared with the task Share)
-    so.waitSem(sTime);
+      // Read MomentDay (shared with the task Share)
+      so.waitSem(sTime);
 
-    state.momentDay = MomentDay;
+      state.momentDay = MomentDay;
 
-    so.signalSem(sTime);
-
+      so.signalSem(sTime);
+    
+    Serial.println("A W");
     // Read TempExt (shared with the task Share)
     so.waitSem(sGoal);
 
     auxGoal = Goal;
 
     so.signalSem(sGoal);
+    Serial.println("D W");
+    
+        //Actualizar el valor
+        switch (auxGoal.numRoom)
+        {
+          case 1:
+            state.datosRoom1.tempGoal = auxGoal.tempGoal;
+            break;
 
+          case 2:
+            state.datosRoom2.tempGoal = auxGoal.tempGoal;
+            break;
 
-    //Actualizar el valor
-    switch (auxGoal.numRoom)
-    {
-      case 1:
-        state.datosRoom1.tempGoal = auxGoal.tempGoal;
-        break;
+          case 3:
+            state.datosRoom3.tempGoal = auxGoal.tempGoal;
+            break;
 
-      case 2:
-        state.datosRoom2.tempGoal = auxGoal.tempGoal;
-        break;
+          case 4:
+            state.datosRoom4.tempGoal = auxGoal.tempGoal;
+            break;
 
-      case 3:
-        state.datosRoom3.tempGoal = auxGoal.tempGoal;
-        break;
+          default:
+            break;
+        }
 
-      case 4:
-        state.datosRoom4.tempGoal = auxGoal.tempGoal;
-        break;
+        //Update the inner temperature of each room
 
-      default:
-        break;
-    }
+        so.waitSem(sTempInt);
 
-    //Update the inner temperature of each room
+        state.datosRoom1.tempInt = TempInt.tempIntRoom1;
+        state.datosRoom2.tempInt = TempInt.tempIntRoom2;
+        state.datosRoom3.tempInt = TempInt.tempIntRoom3;
+        state.datosRoom4.tempInt = TempInt.tempIntRoom4;
 
-    so.waitSem(sTempInt);
-
-    state.datosRoom1.tempInt = TempInt.tempIntRoom1;
-    state.datosRoom2.tempInt = TempInt.tempIntRoom2;
-    state.datosRoom3.tempInt = TempInt.tempIntRoom3;
-    state.datosRoom4.tempInt = TempInt.tempIntRoom4;
-
-    so.signalSem(sTempInt);
-
+        so.signalSem(sTempInt);
+    
     //actualizar limites con struct q viene de structLimites (InsertComandos) ************
-    /* so.waitSem(sLimites);
+      /*so.waitSem(sLimites);
       auxStructLimites = LimitesRooms;
       so.signalSem(sLimites);
 
@@ -467,48 +473,46 @@ void State()
          so.signalSem(sCanCtrl);
        }
 
-      }
-    */
-
-    //Cálculo de la Actuación
-    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom1.tempInt) / 0.6;
-    state.datosRoom2.actuacion = (state.datosRoom2.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom2.tempInt) / 0.6;
-    state.datosRoom3.actuacion = (state.datosRoom3.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom3.tempInt) / 0.6;
-    state.datosRoom4.actuacion = (state.datosRoom4.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom4.tempInt) / 0.6;
+      }*/
+        //Cálculo de la Actuación
+        state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom1.tempInt) / 0.6;
+        state.datosRoom2.actuacion = (state.datosRoom2.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom2.tempInt) / 0.6;
+        state.datosRoom3.actuacion = (state.datosRoom3.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom3.tempInt) / 0.6;
+        state.datosRoom4.actuacion = (state.datosRoom4.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom4.tempInt) / 0.6;
 
 
-    //Serial.print("actuacion: ");
-    //Serial.println( state.datosRoom1.actuacion);
+        //Serial.print("actuacion: ");
+        //Serial.println( state.datosRoom1.actuacion);
 
-    //Transmitir Actuación
-    infoSimulateTemp.numRoom = 1;
-    infoSimulateTemp.tempExt = state.tempExt;
-    infoSimulateTemp.tempInt = state.datosRoom1.tempInt;
-    infoSimulateTemp.actuacion = state.datosRoom1.actuacion;
+        //Transmitir Actuación
+        infoSimulateTemp.numRoom = 1;
+        infoSimulateTemp.tempExt = state.tempExt;
+        infoSimulateTemp.tempInt = state.datosRoom1.tempInt;
+        infoSimulateTemp.actuacion = state.datosRoom1.actuacion;
 
-    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-    infoSimulateTemp.numRoom = 2;
-    infoSimulateTemp.tempExt = state.tempExt;
-    infoSimulateTemp.tempInt = state.datosRoom2.tempInt;
-    infoSimulateTemp.actuacion = state.datosRoom2.actuacion;
+        infoSimulateTemp.numRoom = 2;
+        infoSimulateTemp.tempExt = state.tempExt;
+        infoSimulateTemp.tempInt = state.datosRoom2.tempInt;
+        infoSimulateTemp.actuacion = state.datosRoom2.actuacion;
 
-    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-    infoSimulateTemp.numRoom = 3;
-    infoSimulateTemp.tempExt = state.tempExt;
-    infoSimulateTemp.tempInt = state.datosRoom3.tempInt;
-    infoSimulateTemp.actuacion = state.datosRoom3.actuacion;
+        infoSimulateTemp.numRoom = 3;
+        infoSimulateTemp.tempExt = state.tempExt;
+        infoSimulateTemp.tempInt = state.datosRoom3.tempInt;
+        infoSimulateTemp.actuacion = state.datosRoom3.actuacion;
 
-    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-    infoSimulateTemp.numRoom = 4;
-    infoSimulateTemp.tempExt = state.tempExt;
-    infoSimulateTemp.tempInt = state.datosRoom4.tempInt;
-    infoSimulateTemp.actuacion = state.datosRoom4.actuacion;
+        infoSimulateTemp.numRoom = 4;
+        infoSimulateTemp.tempExt = state.tempExt;
+        infoSimulateTemp.tempInt = state.datosRoom4.tempInt;
+        infoSimulateTemp.actuacion = state.datosRoom4.actuacion;
 
-    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
-
+        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+    
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
   }
@@ -528,11 +532,11 @@ void SimulateTempInt()
     //Formula de la nueva Tª interior
     newTempInt = 0.5 * infoSimulateTemp.actuacion + 0.25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
     /*Serial.print("Habitacion: ");
-    Serial.print(infoSimulateTemp.numRoom);
+      Serial.print(infoSimulateTemp.numRoom);
 
-    Serial.print("   New Temp Int: ");
-    Serial.println(newTempInt);
-    Serial.println("******************");*/
+      Serial.print("   New Temp Int: ");
+      Serial.println(newTempInt);
+      Serial.println("******************");*/
 
     //Actualizamos el valor
     switch (infoSimulateTemp.numRoom)
@@ -617,72 +621,10 @@ void Share() {
   }
 }
 
-void InsertTemp() {
-
-  uint8_t * rxNumRoomMessage;
-
-  while (true) {
-    // Wait until receiving the new state from KeyDetector
-    so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
-
-    Goal.numRoom = *rxNumRoomMessage + 1;
-
-
-    // Read adcValue (shared with ShareAdcValue)
-    so.waitSem(sSampledAdc);
-
-    Goal.tempGoal = sampledAdc;
-
-    so.signalSem(sSampledAdc);
-
-    Serial.print("Habitacion: ");
-    Serial.println(Goal.numRoom);
-
-    Serial.print("Temperatura: ");
-    Serial.println(Goal.tempGoal);
-  }
-}
-
-
-
-void ShareAdcValue() {
-
-  char str[16];
-  char floatBuffer[6];
-  char charBuff[10];
-
-  uint16_t auxAdcValue;
-  float auxSampledAdc;
-
-  while (1)
-  {
-    // Wait until any of the bits of the flag fExtEvent
-    // indicated by the bits of maskAdcEvent are set to '1'
-    so.waitFlag(fAdcEvent, maskAdcEvent);
-
-    // Clear the flag fExtEvent to not process the same event twice
-    so.clearFlag(fAdcEvent, maskAdcEvent);
-
-    auxAdcValue = adcValue;
-    // Get value and map it in range [-10, 40] -> mapeam es valor q estava entre (0,1023) a [-10, 40]
-    //1023 * x = 50 -> x = 0,04887586
-    auxSampledAdc = (((float) auxAdcValue) * 0.04887585) - 10;
-
-
-    so.waitSem(sSampledAdc);
-
-    sampledAdc = auxSampledAdc;
-
-    so.signalSem(sSampledAdc);
-  }
-}
-
-
-
 void KeyDetector()
 {
   typeMessageTemp MessageTemp1, MessageTemp2, MessageTemp3, MessageTemp4;
-
+  uint8_t auxKey;
   while (1)
   {
     // Wait until any of the bits of the flag fKeyEvent
@@ -695,7 +637,10 @@ void KeyDetector()
     //distinguimos los diferentes posibles casos:
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
-      so.signalMBox(mbNumRoom, (byte*) &key);
+      Serial.print("******** K E Y !!!!!!!!: ");
+      Serial.println(key);
+      auxKey = 1;
+      so.signalMBox(mbNumRoom, (byte*) &auxKey);
 
     } else if (key == 8) {
       //Caso Tª exterior-> enviar valor key a través de CAN
@@ -761,6 +706,78 @@ void KeyDetector()
 }
 
 
+void InsertTemp() {
+  
+  uint8_t auxNumRoom;
+  uint8_t * rxNumRoomMessage;
+
+  while (true) {
+    //Serial.println("hola ");
+
+    // Wait until receiving the new state from KeyDetector
+    so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
+    //Serial.println("hola 2 ");
+    //Goal.numRoom = *rxNumRoomMessage + 1;
+   // auxNumRoom = (*rxNumRoomMessage) + 1;
+
+    // Read adcValue (shared with ShareAdcValue)
+    so.waitSem(sSampledAdc);
+    Serial.println("a 2 ");
+    so.waitSem(sGoal);
+
+    //Goal.numRoom = auxNumRoom;
+    Goal.tempGoal = sampledAdc;
+
+    so.signalSem(sGoal);
+    Serial.println("d 2 ");
+    so.signalSem(sSampledAdc);
+    delay(599);
+
+    /*
+        Serial.print("Habitacion: ");
+        Serial.println(Goal.numRoom);
+
+        Serial.print("Temperatura: ");
+        Serial.println(Goal.tempGoal);*/
+  }
+}
+
+
+
+void ShareAdcValue() {
+
+  char str[16];
+  char floatBuffer[6];
+  char charBuff[10];
+
+  uint16_t auxAdcValue;
+  float auxSampledAdc;
+
+  while (1)
+  {
+    // Wait until any of the bits of the flag fExtEvent
+    // indicated by the bits of maskAdcEvent are set to '1'
+    so.waitFlag(fAdcEvent, maskAdcEvent);
+
+    // Clear the flag fExtEvent to not process the same event twice
+    so.clearFlag(fAdcEvent, maskAdcEvent);
+
+    auxAdcValue = adcValue;
+    // Get value and map it in range [-10, 40] -> mapeam es valor q estava entre (0,1023) a [-10, 40]
+    //1023 * x = 50 -> x = 0,04887586
+    auxSampledAdc = (((float) auxAdcValue) * 0.04887585) - 10;
+
+
+    so.waitSem(sSampledAdc);
+
+    sampledAdc = auxSampledAdc;
+
+    so.signalSem(sSampledAdc);
+  }
+}
+
+
+
 void InsertComandos()
 {
   char c;
@@ -771,8 +788,8 @@ void InsertComandos()
   uint8_t turno = 0;
   uint8_t i = 0;
   unsigned long nextActivationTick;
-
   nextActivationTick = so.getTick();
+
   while (true)
   {
 
@@ -785,12 +802,12 @@ void InsertComandos()
       switch (turno)
       {
         case 0:
-        //1 = 49 2 = 50
-          if (c == '1' || c == '2' || c == '3' || c == '4') { 
-            room = (int)c-48;
+          //1 = 49 2 = 50
+          if (c == '1' || c == '2' || c == '3' || c == '4') {
+            room = (int)c - 48;
             turno++;
             Serial.print("Habitacion Seleccionada Correctamente: ");
-             Serial.println(room);
+            Serial.println(room);
           } else {
             Serial.println("Error en la Seleccion de Habitación");
           }
@@ -807,18 +824,18 @@ void InsertComandos()
           break;
 
         case 2:
-          if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') {          
+          if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') {
             if (i == 0) { //cogemos el primer valor (decenas)
-              tempMax= 0;
-              tempMax = tempMax + (((int)c-48) * 10);
+              tempMax = 0;
+              tempMax = tempMax + (((int)c - 48) * 10);
               i = i + 1;
             } else if (i == 1) { //unidades
-              tempMax = tempMax + (int)c-48;
+              tempMax = tempMax + (int)c - 48;
               i = i + 1;
             } else if (i == 2) { //'.'
-              i = i + 1;          
+              i = i + 1;
             } else {  //decimales
-              tempMax = tempMax + (((float) ((int)c-48)) / 10);
+              tempMax = tempMax + (((float) ((int)c - 48)) / 10);
               i = 0;
               turno++;
               Serial.print("Temperatura Maxima Seleccionada Correctamente: ");
@@ -843,18 +860,18 @@ void InsertComandos()
           break;
 
         case 4:
-          if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') { 
+          if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') {
             if (i == 0) {
               tempMin = 0;
-              tempMin = tempMin + (((int)c-48) * 10);
+              tempMin = tempMin + (((int)c - 48) * 10);
               i = i + 1;
             } else if (i == 1) {
-              tempMin = tempMin + (int)c-48;
+              tempMin = tempMin + (int)c - 48;
               i = i + 1;
             } else if (i == 2) {
-              i = i + 1;          
+              i = i + 1;
             } else {
-              tempMin = tempMin +(((float) ((int)c-48)) / 10);
+              tempMin = tempMin + (((float) ((int)c - 48)) / 10);
               i = 0;
               turno++;
               Serial.print("Temperatura Minima Seleccionada Correctamente: ");
@@ -886,9 +903,9 @@ void InsertComandos()
             so.waitSem(sLimites);
             //structLimites.numRoom =
             so.signalSem(sLimites);
-            
+
             Serial.println("FIN Momenot del DIa Seleccionada Correctamente: ");
-             Serial.println(c);
+            Serial.println(c);
           } else {
             turno = 0;
             Serial.println("Error en el Momento del dia");
@@ -954,11 +971,15 @@ void loop() {
 
     // Definition and initialization of semaphores
 
-    sGoal = so.defSem(1); // intially accesible
+    //sGoal = so.defSem(1); // intially accesible
+    sSampledAdc = so.defSem(1); // intially accesible
+
+
     sTempInt = so.defSem(1); // intially accesible
     sTime = so.defSem(1); // intially accesible
     sTempExt = so.defSem(1); // intially accesible
-    sSampledAdc = so.defSem(1); // intially accesible
+    //sSampledAdc = so.defSem(1); // intially accesible
+    sGoal = so.defSem(1); // intially accesible
     sLimites = so.defSem(1); // intially accesible
     sCanCtrl = so.defSem(1); // intially accesible
 
