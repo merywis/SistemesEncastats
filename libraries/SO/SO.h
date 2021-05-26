@@ -24,7 +24,7 @@ typedef unsigned char MBox;
 typedef unsigned char Flag;
 
 #define MAXTASK 7 // Maximum tasks --> NOTE: up to 254 (if enough memory)
-#define MAXSEM 8  // Maximum semaphore --> NOTE: up to 255 (if enough memory)s
+#define MAXSEM 4  // Maximum semaphore --> NOTE: up to 255 (if enough memory)s
 #define MAXMB 4	  // Maximum mailboxe --> NOTE: up to 255 (if enough memory)s
 #define MAXFLAGS 4 // Maximum flag --> NOTE: up to 255 (if enough memory)s
 

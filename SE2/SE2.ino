@@ -19,21 +19,28 @@ MCP_CAN CAN(SPI_CS_PIN);
 /** DEFINE ********************************************************************/
 /******************************************************************************/
 
-#define PRIO_TASK_PrintTemp 2
-
-
 #define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
 #define CAN_ID_ALARM 4
 
+#define PRIO_TASK_PrintTemp 2
 #define PRIO_TASK_DETECT_TEMP_EXT 3
 #define PRIO_TASK_TIMETABLE_HEATING 4
 #define PRIO_TASK_SHARE_TIME 5
+#define PRIO_TASK_ALARM 3
 
 #define PERIOD_TASK_DETECT_TEMP_EXT 10
 #define PERIOD_TASK_TIMETABLE_HEATING 10
 
+
+#define DO 1
+#define RE 3
+#define MI 5
+#define FA 6
+#define SOL 8
+#define LA 10
+#define SI 12
 
 
 /******************************************************************************/
@@ -42,6 +49,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 
 volatile float TempExt = 0.0;
 volatile boolean momentDay;
+uint8_t rxNumRoom;
 
 /********************************
   Declaration of flags and masks
@@ -49,11 +57,12 @@ volatile boolean momentDay;
 
 // flag (set of bits) for CAN reception events
 Flag fCANPrintEvent;
+Flag fAlarmEvent;
 
 
 // Masks
 const unsigned char maskRxPrintEvent = 0x01; // represents reception of sensor via CAN
-
+const unsigned char maskAlarmEvent = 0x01; // represents reception of sensor via CAN
 
 /*********
   Declaration of semaphores
@@ -141,7 +150,11 @@ void isrCAN()
       case CAN_ID_PRINT_TEMP:
         CAN.getRxMsgData((byte*) &rxMessageTemp);
         so.setFlag(fCANPrintEvent, maskRxPrintEvent);
-          Serial.println("isr");
+        break;
+
+ case CAN_ID_ALARM:
+        CAN.getRxMsgData((byte*) &rxNumRoom);
+        so.setFlag(fCANPrintEvent, maskRxPrintEvent);
         break;
 
       default:
@@ -354,9 +367,48 @@ void ShareTime()
     so.signalSem(sTime);
 
   }
-
 }
 
+
+void Alarm()
+{
+  uint8_t  auxNumRoom;
+
+  const uint8_t TAM = 9;
+  const uint8_t Notes[TAM] = {MI, MI, FA, SOL, SOL, FA, MI, RE, DO};
+  uint8_t c;
+  
+  while (true) {
+   // Wait until any of the bits of the flag fCANPrintEvent
+    // indicated by the bits of maskRxPrintEvent are set to '1'
+    so.waitFlag(fAlarmEvent, maskAlarmEvent);
+
+    // Clear the maskRxPrintEvent bits of flag fCANPrintEvent to not process the same event twice
+    so.clearFlag(fAlarmEvent, maskAlarmEvent);
+    auxNumRoom = rxNumRoom;
+    //Simulate alarm
+    hib.ledToggle(auxNumRoom); 
+
+
+    for (int i = 0; i < TAM; i++) {
+      c = Notes[i];
+      playNote(c, 4, 500);
+    }
+
+
+  }
+}
+
+
+void playNote(unsigned char note, unsigned char octave, unsigned int duration) {
+  float freq;
+  float potencia;
+  potencia = pow(2, ((((float)note) - 10.0) / 12.0 + ((float) octave) - 4.0));
+  freq = 440 * potencia;
+  hib.buzzPlay(duration, freq);
+
+
+}
 
 
 
@@ -422,6 +474,8 @@ void loop() {
     so.defTask(DetectTempExt, PRIO_TASK_DETECT_TEMP_EXT);
     so.defTask(TimetableHeating, PRIO_TASK_TIMETABLE_HEATING);
     so.defTask(ShareTime, PRIO_TASK_SHARE_TIME);
+    so.defTask(Alarm, PRIO_TASK_ALARM);
+    
 
 
     //Set up timer 5 so that the SO can regain the CPU every tick

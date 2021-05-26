@@ -80,14 +80,9 @@ const unsigned char maskRxTimeEvent = 0x02; // represents new adc value adquired
 /*********
   Declaration of semaphores
 *********/
-Sem sGoal;
-//Sem sSampledAdc;
+Sem sDatosTemp;
 Sem sTempInt;
-Sem sTime;
-Sem sTempExt;
-Sem sSampledAdc;
-//Sem sGoal;
-Sem sLimites;
+Sem sShare;
 Sem sCanCtrl;
 
 
@@ -114,7 +109,6 @@ struct structRoom
 };
 typedef structRoom typeRoom;
 
-
 struct structState
 {
   float tempExt; // Number of edition
@@ -139,10 +133,10 @@ typedef structGoal typeGoal;
 typeGoal Goal;
 
 struct structLimitesRoom {
-  uint8_t maxDay = 30; // Number of edition
-  uint8_t maxNight = 28; // Number of edition
-  uint8_t minDay = 15; // Number of edition
-  uint8_t minNight = 17; // Number of edition
+  float maxDay = 30.0; // Number of edition
+  float maxNight = 28.9; // Number of edition
+  float minDay = 15.0; // Number of edition
+  float minNight = 17.0; // Number of edition
 };
 typedef structLimitesRoom typeLimitesRoom;
 
@@ -156,6 +150,7 @@ struct structLimites
 
 };
 typedef structLimites typeLimites;
+typeLimites LimitesRooms;
 
 //********* typeLimitesRoom arrayLimites[4]
 struct structTempInt
@@ -222,6 +217,7 @@ void adcHook(uint16_t newAdcAdquiredValue)
 // Hook FOR TICKISR
 void timer5Hook ()
 {
+  hib.ledToggle(2);
   so.updateTime(); // Call SO to update time (tick) and manage tasks
 }
 
@@ -292,6 +288,7 @@ void State()
   typeTempInfo infoSimulateTemp;
   uint8_t numRoom = 0;
   typeGoal auxGoal;
+  typeLimites auxStructLimites;
 
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
@@ -299,219 +296,219 @@ void State()
   while (true)
   {
     // Read TempExt (shared with the task Share)
-    so.waitSem(sTempExt);
+    so.waitSem(sShare);
 
-      state.tempExt = TempExt;
+    state.tempExt = TempExt;
 
-      so.signalSem(sTempExt);
+    so.signalSem(sShare);
 
-      // Read MomentDay (shared with the task Share)
-      so.waitSem(sTime);
+    // Read MomentDay (shared with the task Share)
+    so.waitSem(sShare);
 
-      state.momentDay = MomentDay;
+    state.momentDay = MomentDay;
 
-      so.signalSem(sTime);
-    
-    Serial.println("A W");
+    so.signalSem(sShare);
+
+    Serial.println("TASK_state:  Antes wait");
     // Read TempExt (shared with the task Share)
-    so.waitSem(sGoal);
-
+    so.waitSem(sDatosTemp);
     auxGoal = Goal;
 
-    so.signalSem(sGoal);
-    Serial.println("D W");
-    
-        //Actualizar el valor
-        switch (auxGoal.numRoom)
-        {
-          case 1:
-            state.datosRoom1.tempGoal = auxGoal.tempGoal;
-            break;
+    so.signalSem(sDatosTemp);
+    Serial.println("TASK_state: dsps signal");
 
-          case 2:
-            state.datosRoom2.tempGoal = auxGoal.tempGoal;
-            break;
+    //Actualizar el valor
+    switch (auxGoal.numRoom)
+    {
+      case 1:
+        state.datosRoom1.tempGoal = auxGoal.tempGoal;
+        break;
 
-          case 3:
-            state.datosRoom3.tempGoal = auxGoal.tempGoal;
-            break;
+      case 2:
+        state.datosRoom2.tempGoal = auxGoal.tempGoal;
+        break;
 
-          case 4:
-            state.datosRoom4.tempGoal = auxGoal.tempGoal;
-            break;
+      case 3:
+        state.datosRoom3.tempGoal = auxGoal.tempGoal;
+        break;
 
-          default:
-            break;
-        }
+      case 4:
+        state.datosRoom4.tempGoal = auxGoal.tempGoal;
+        break;
 
-        //Update the inner temperature of each room
+      default:
+        break;
+    }
 
-        so.waitSem(sTempInt);
+    //Update the inner temperature of each room
 
-        state.datosRoom1.tempInt = TempInt.tempIntRoom1;
-        state.datosRoom2.tempInt = TempInt.tempIntRoom2;
-        state.datosRoom3.tempInt = TempInt.tempIntRoom3;
-        state.datosRoom4.tempInt = TempInt.tempIntRoom4;
+    so.waitSem(sTempInt);
 
-        so.signalSem(sTempInt);
-    
+    state.datosRoom1.tempInt = TempInt.tempIntRoom1;
+    state.datosRoom2.tempInt = TempInt.tempIntRoom2;
+    state.datosRoom3.tempInt = TempInt.tempIntRoom3;
+    state.datosRoom4.tempInt = TempInt.tempIntRoom4;
+
+    so.signalSem(sTempInt);
+
     //actualizar limites con struct q viene de structLimites (InsertComandos) ************
-      /*so.waitSem(sLimites);
-      auxStructLimites = LimitesRooms;
-      so.signalSem(sLimites);
+    so.waitSem(sDatosTemp);
+    auxStructLimites = LimitesRooms;
+    so.signalSem(sDatosTemp);
+/*
+    state.datosRoom1.tempMaxDay = auxStructLimites.limitesRoom1.maxDay;
+    state.datosRoom1.tempMinDay = auxStructLimites.limitesRoom1.minDay;
+    state.datosRoom1.tempMaxNight = auxStructLimites.limitesRoom1.maxNight;
+    state.datosRoom1.tempMinNight = auxStructLimites.limitesRoom1.minNight;
 
-      state.datosRoom1.tempMaxDay = auxStructLimites.limitesRoom1.maxDay;
-      state.datosRoom1.tempMinDay = auxStructLimites.limitesRoom1.minDay;
-      state.datosRoom1.tempMaxNight = auxStructLimites.limitesRoom1.maxNight;
-      state.datosRoom1.tempMinNight = auxStructLimites.limitesRoom1.minNight;
+    state.datosRoom2.tempMaxDay = auxStructLimites.limitesRoom2.maxDay;
+    state.datosRoom2.tempMinDay = auxStructLimites.limitesRoom2.minDay;
+    state.datosRoom2.tempMaxNight = auxStructLimites.limitesRoom2.maxNight;
+    state.datosRoom2.tempMinNight = auxStructLimites.limitesRoom2.minNight;
 
-      state.datosRoom2.tempMaxDay = auxStructLimites.limitesRoom2.maxDay;
-      state.datosRoom2.tempMinDay = auxStructLimites.limitesRoom2.minDay;
-      state.datosRoom2.tempMaxNight = auxStructLimites.limitesRoom2.maxNight;
-      state.datosRoom2.tempMinNight = auxStructLimites.limitesRoom2.minNight;
+    state.datosRoom3.tempMaxDay = auxStructLimites.limitesRoom3.maxDay;
+    state.datosRoom3.tempMinDay = auxStructLimites.limitesRoom3.minDay;
+    state.datosRoom3.tempMaxNight = auxStructLimites.limitesRoom3.maxNight;
+    state.datosRoom3.tempMinNight = auxStructLimites.limitesRoom3.minNight;
 
-      state.datosRoom3.tempMaxDay = auxStructLimites.limitesRoom3.maxDay;
-      state.datosRoom3.tempMinDay = auxStructLimites.limitesRoom3.minDay;
-      state.datosRoom3.tempMaxNight = auxStructLimites.limitesRoom3.maxNight;
-      state.datosRoom3.tempMinNight = auxStructLimites.limitesRoom3.minNight;
+    state.datosRoom4.tempMaxDay = auxStructLimites.limitesRoom4.maxDay;
+    state.datosRoom4.tempMinDay = auxStructLimites.limitesRoom4.minDay;
+    state.datosRoom4.tempMaxNight = auxStructLimites.limitesRoom4.maxNight;
+    state.datosRoom4.tempMinNight = auxStructLimites.limitesRoom4.minNight;
 
-      state.datosRoom4.tempMaxDay = auxStructLimites.limitesRoom4.maxDay;
-      state.datosRoom4.tempMinDay = auxStructLimites.limitesRoom4.minDay;
-      state.datosRoom4.tempMaxNight = auxStructLimites.limitesRoom4.maxNight;
-      state.datosRoom4.tempMinNight = auxStructLimites.limitesRoom4.minNight;
+    //Consultar Límites
+    if (state.momentDay) { //caso límites día
 
-      //Consultar Límites
-      if (state.momentDay) { //caso límites día
+      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
+        numRoom = 1;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxDay || state.datosRoom1.tempInt < state.datosRoom1.tempMinDay) {
-         numRoom = 1;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxDay || state.datosRoom2.tempInt < state.datosRoom2.tempMinDay) {
+        numRoom = 2;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxDay || state.datosRoom2.tempInt < state.datosRoom2.tempMinDay) {
-         numRoom = 2;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxDay || state.datosRoom3.tempInt < state.datosRoom3.tempMinDay) {
+        numRoom = 3;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxDay || state.datosRoom3.tempInt < state.datosRoom3.tempMinDay) {
-         numRoom = 3;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxDay || state.datosRoom4.tempInt < state.datosRoom4.tempMinDay) {
+        numRoom = 4;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxDay || state.datosRoom4.tempInt < state.datosRoom4.tempMinDay) {
-         numRoom = 4;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+    } else {
 
-      } else {
+      if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxNight || state.datosRoom1.tempInt < state.datosRoom1.tempMinNight) {
+        numRoom = 1;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom1.tempInt > state.datosRoom1.tempMaxNight || state.datosRoom1.tempInt < state.datosRoom1.tempMinNight) {
-         numRoom = 1;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+      if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxNight || state.datosRoom2.tempInt < state.datosRoom2.tempMinNight) {
+        numRoom = 2;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom2.tempInt > state.datosRoom2.tempMaxNight || state.datosRoom2.tempInt < state.datosRoom2.tempMinNight) {
-         numRoom = 2;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+      if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxNight || state.datosRoom3.tempInt < state.datosRoom3.tempMinNight) {
+        numRoom = 3;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom3.tempInt > state.datosRoom3.tempMaxNight || state.datosRoom3.tempInt < state.datosRoom3.tempMinNight) {
-         numRoom = 3;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
+      if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxNight || state.datosRoom4.tempInt < state.datosRoom4.tempMinNight) {
+        numRoom = 4;
+        //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+        so.waitSem(sCanCtrl);
 
-       if (state.datosRoom4.tempInt > state.datosRoom4.tempMaxNight || state.datosRoom4.tempInt < state.datosRoom4.tempMinNight) {
-         numRoom = 4;
-         //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-         so.waitSem(sCanCtrl);
+        if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+          CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
 
-         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-           CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &numRoom);
+        so.signalSem(sCanCtrl);
+      }
 
-         so.signalSem(sCanCtrl);
-       }
-
-      }*/
-        //Cálculo de la Actuación
-        state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom1.tempInt) / 0.6;
-        state.datosRoom2.actuacion = (state.datosRoom2.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom2.tempInt) / 0.6;
-        state.datosRoom3.actuacion = (state.datosRoom3.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom3.tempInt) / 0.6;
-        state.datosRoom4.actuacion = (state.datosRoom4.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom4.tempInt) / 0.6;
+    }*/
+    
+    //Cálculo de la Actuación
+    state.datosRoom1.actuacion = (state.datosRoom1.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom1.tempInt) / 0.6;
+    state.datosRoom2.actuacion = (state.datosRoom2.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom2.tempInt) / 0.6;
+    state.datosRoom3.actuacion = (state.datosRoom3.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom3.tempInt) / 0.6;
+    state.datosRoom4.actuacion = (state.datosRoom4.tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom4.tempInt) / 0.6;
 
 
-        //Serial.print("actuacion: ");
-        //Serial.println( state.datosRoom1.actuacion);
+    //Serial.print("actuacion: ");
+    //Serial.println( state.datosRoom1.actuacion);
 
-        //Transmitir Actuación
-        infoSimulateTemp.numRoom = 1;
-        infoSimulateTemp.tempExt = state.tempExt;
-        infoSimulateTemp.tempInt = state.datosRoom1.tempInt;
-        infoSimulateTemp.actuacion = state.datosRoom1.actuacion;
+    //Transmitir Actuación
+    infoSimulateTemp.numRoom = 1;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom1.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom1.actuacion;
 
-        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-        infoSimulateTemp.numRoom = 2;
-        infoSimulateTemp.tempExt = state.tempExt;
-        infoSimulateTemp.tempInt = state.datosRoom2.tempInt;
-        infoSimulateTemp.actuacion = state.datosRoom2.actuacion;
+    infoSimulateTemp.numRoom = 2;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom2.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom2.actuacion;
 
-        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-        infoSimulateTemp.numRoom = 3;
-        infoSimulateTemp.tempExt = state.tempExt;
-        infoSimulateTemp.tempInt = state.datosRoom3.tempInt;
-        infoSimulateTemp.actuacion = state.datosRoom3.actuacion;
+    infoSimulateTemp.numRoom = 3;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom3.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom3.actuacion;
 
-        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
 
-        infoSimulateTemp.numRoom = 4;
-        infoSimulateTemp.tempExt = state.tempExt;
-        infoSimulateTemp.tempInt = state.datosRoom4.tempInt;
-        infoSimulateTemp.actuacion = state.datosRoom4.actuacion;
+    infoSimulateTemp.numRoom = 4;
+    infoSimulateTemp.tempExt = state.tempExt;
+    infoSimulateTemp.tempInt = state.datosRoom4.tempInt;
+    infoSimulateTemp.actuacion = state.datosRoom4.actuacion;
 
-        so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+    so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
     
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
@@ -597,21 +594,21 @@ void Share() {
       case maskRxTempExtEvent:
 
         // Read rxTemp
-        so.waitSem(sTempExt);
+        so.waitSem(sShare);
 
         TempExt = rxTemp;
 
-        so.signalSem(sTempExt);
+        so.signalSem(sShare);
         break;
 
       case maskRxTimeEvent:
 
         // Read rxTime
-        so.waitSem(sTime);
+        so.waitSem(sShare);
 
         MomentDay = rxTime;
 
-        so.signalSem(sTime);
+        so.signalSem(sShare);
         break;
 
       default:
@@ -633,13 +630,14 @@ void KeyDetector()
 
     // Clear the flag fKeyEvent to not process the same event twice
     so.clearFlag(fKeyEvent, maskKeyEvent);
+    hib.ledToggle(3);
 
     //distinguimos los diferentes posibles casos:
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
-      Serial.print("******** K E Y !!!!!!!!: ");
-      Serial.println(key);
-      auxKey = 1;
+      //Serial.print("******** K E Y !!!!!!!!: ");
+      //Serial.println(key);
+      auxKey = key;
       so.signalMBox(mbNumRoom, (byte*) &auxKey);
 
     } else if (key == 8) {
@@ -692,13 +690,16 @@ void KeyDetector()
       so.signalSem(sTempInt);
 
       // Send sensor via CAN
-
       so.waitSem(sCanCtrl);
+
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp1);
-      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp2);
-      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp3);
-      CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp4);
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp2);
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp3);
+      if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+        CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp4);
 
       so.signalSem(sCanCtrl);
     }
@@ -707,38 +708,40 @@ void KeyDetector()
 
 
 void InsertTemp() {
-  
+
   uint8_t auxNumRoom;
   uint8_t * rxNumRoomMessage;
+
+  float auxSampledAdc;
 
   while (true) {
     //Serial.println("hola ");
 
     // Wait until receiving the new state from KeyDetector
     so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
-    //Serial.println("hola 2 ");
-    //Goal.numRoom = *rxNumRoomMessage + 1;
-   // auxNumRoom = (*rxNumRoomMessage) + 1;
+
+    auxNumRoom = (*rxNumRoomMessage) + 1;
 
     // Read adcValue (shared with ShareAdcValue)
-    so.waitSem(sSampledAdc);
-    Serial.println("a 2 ");
-    so.waitSem(sGoal);
+    so.waitSem(sDatosTemp);
 
-    //Goal.numRoom = auxNumRoom;
-    Goal.tempGoal = sampledAdc;
+    auxSampledAdc = sampledAdc;
 
-    so.signalSem(sGoal);
-    Serial.println("d 2 ");
-    so.signalSem(sSampledAdc);
-    delay(599);
+    so.signalSem(sDatosTemp);
 
-    /*
-        Serial.print("Habitacion: ");
-        Serial.println(Goal.numRoom);
 
-        Serial.print("Temperatura: ");
-        Serial.println(Goal.tempGoal);*/
+    so.waitSem(sDatosTemp);
+
+    Goal.numRoom = auxNumRoom;
+    Goal.tempGoal = auxSampledAdc;
+
+    so.signalSem(sDatosTemp);
+
+    Serial.print("Habitacion: ");
+    Serial.println(Goal.numRoom);
+
+    Serial.print("Temperatura: ");
+    Serial.println(Goal.tempGoal);
   }
 }
 
@@ -768,11 +771,11 @@ void ShareAdcValue() {
     auxSampledAdc = (((float) auxAdcValue) * 0.04887585) - 10;
 
 
-    so.waitSem(sSampledAdc);
+    so.waitSem(sDatosTemp);
 
     sampledAdc = auxSampledAdc;
 
-    so.signalSem(sSampledAdc);
+    so.signalSem(sDatosTemp);
   }
 }
 
@@ -898,26 +901,68 @@ void InsertComandos()
           if (c == 'd' || c == 'n') {
             turno = 0;
 
-            //Actualizar el valor de la variable
+            //Actualizar el valor de los límites en la habitación seleccionada
+            so.waitSem(sDatosTemp);
+            switch (room)
+            {
+              case 1:
+                if (c == 'd') {
+                  LimitesRooms.limitesRoom1.maxDay = tempMax;
+                  LimitesRooms.limitesRoom1.minDay = tempMin;
+                } else {
+                  LimitesRooms.limitesRoom1.maxNight = tempMax;
+                  LimitesRooms.limitesRoom1.minNight = tempMin;
+                }
+                break;
 
-            so.waitSem(sLimites);
-            //structLimites.numRoom =
-            so.signalSem(sLimites);
+              case 2:
+                if (c == 'd') {
+                  LimitesRooms.limitesRoom2.maxDay = tempMax;
+                  LimitesRooms.limitesRoom2.minDay = tempMin;
+                } else {
+                  LimitesRooms.limitesRoom2.maxNight = tempMax;
+                  LimitesRooms.limitesRoom2.minNight = tempMin;
+                }
+                break;
 
-            Serial.println("FIN Momenot del DIa Seleccionada Correctamente: ");
+              case 3:
+                if (c == 'd') {
+                  LimitesRooms.limitesRoom3.maxDay = tempMax;
+                  LimitesRooms.limitesRoom3.minDay = tempMin;
+                } else {
+                  LimitesRooms.limitesRoom3.maxNight = tempMax;
+                  LimitesRooms.limitesRoom3.minNight = tempMin;
+                }
+                break;
+
+              case 4:
+                if (c == 'd') {
+                  LimitesRooms.limitesRoom4.maxDay = tempMax;
+                  LimitesRooms.limitesRoom4.minDay = tempMin;
+                } else {
+                  LimitesRooms.limitesRoom4.maxNight = tempMax;
+                  LimitesRooms.limitesRoom4.minNight = tempMin;
+                }
+                break;
+
+              default:
+                break;
+            }
+            so.signalSem(sDatosTemp);
+
+            Serial.println("FIN Momento del Dia Seleccionada Correctamente: ");
             Serial.println(c);
           } else {
             turno = 0;
             Serial.println("Error en el Momento del dia");
           }
+
           break;
 
         default:
           break;
       }
     }
-
-
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_INSERTCOMANDOS; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
@@ -970,19 +1015,11 @@ void loop() {
     Serial.println("Por ejemplo: 2 27 17 dia");
 
     // Definition and initialization of semaphores
-
-    //sGoal = so.defSem(1); // intially accesible
-    sSampledAdc = so.defSem(1); // intially accesible
-
-
     sTempInt = so.defSem(1); // intially accesible
-    sTime = so.defSem(1); // intially accesible
-    sTempExt = so.defSem(1); // intially accesible
-    //sSampledAdc = so.defSem(1); // intially accesible
-    sGoal = so.defSem(1); // intially accesible
-    sLimites = so.defSem(1); // intially accesible
+    sShare = so.defSem(1); // intially accesible
     sCanCtrl = so.defSem(1); // intially accesible
-
+    sDatosTemp = so.defSem(1); // intially accesible
+    
     // Definition and initialization of mailboxes
     mbNumRoom = so.defMBox();
     mbInfoTemp = so.defMBox();
