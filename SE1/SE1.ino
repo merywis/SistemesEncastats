@@ -21,13 +21,13 @@ MCP_CAN CAN(SPI_CS_PIN);
 /******************************************************************************/
 #define NUM_ROOM 4
 
-#define PRIO_TASK_STATE 8
-#define PRIO_TASK_SIMULATE_TEMP_INT 2
+#define PRIO_TASK_STATE 1
+#define PRIO_TASK_SIMULATE_TEMP_INT 8 //esta tiene que tener mayor prioridad que state porq si no no le deja activarse
 #define PRIO_TASK_KeyDetector 3
 #define PRIO_TASK_ShareAdcValue 4
 #define PRIO_TASK_InsertTemp 2
 #define PRIO_TASK_InsertComandos 6
-#define PRIO_TASK_SHARE 7
+#define PRIO_TASK_SHARE 5
 
 
 #define CAN_ID_PRINT_TEMP 1
@@ -266,7 +266,7 @@ void State()
   typeLimitesRoom auxStructLimites[4];
 
   uint8_t numRoom;
-int j;
+  int j;
 
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
@@ -309,62 +309,62 @@ int j;
       Serial.print(j);
       Serial.print(" es ");
       Serial.println(state.datosRoom[i].tempInt);
-      
+
     }
 
     so.signalSem(sTempInt);
+    /*
+        //actualizar limites con struct q viene de structLimites (InsertComandos) ************
+        so.waitSem(sDatosTemp);
 
-    //actualizar limites con struct q viene de structLimites (InsertComandos) ************
-    so.waitSem(sDatosTemp);
-
-    for (int i = 0; i < 4; i++) {
-      auxStructLimites[i] = arrayLimites[i];
-    }
-
-    so.signalSem(sDatosTemp);
-
-    for (int i = 0; i < 4; i++) {
-      state.datosRoom[i].tempMaxDay = auxStructLimites[i].maxDay;
-      state.datosRoom[i].tempMinDay = auxStructLimites[i].minDay;
-      state.datosRoom[i].tempMaxNight = auxStructLimites[i].maxNight;
-      state.datosRoom[i].tempMinNight = auxStructLimites[i].minNight;
-
-      //PRINTS
-      Serial.print("Los limites maximos de la habitacion ");
-      j = i + 1;
-      Serial.print(j);
-      Serial.print(" es ");
-      Serial.println(state.datosRoom[i].tempMaxDay);
-    }
-
-    for (int i = 0; i < 4; i++) {
-      if (state.momentDay) { //caso límites día
-
-        if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxDay || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinDay) {
-
-          //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-          so.waitSem(sCanCtrl);
-
-          if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-            CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &i);
-
-          so.signalSem(sCanCtrl);
+        for (int i = 0; i < 4; i++) {
+          auxStructLimites[i] = arrayLimites[i];
         }
 
-      }  else {
+        so.signalSem(sDatosTemp);
 
-        if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxNight || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinNight) {
-          //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-          so.waitSem(sCanCtrl);
+        for (int i = 0; i < 4; i++) {
+          state.datosRoom[i].tempMaxDay = auxStructLimites[i].maxDay;
+          state.datosRoom[i].tempMinDay = auxStructLimites[i].minDay;
+          state.datosRoom[i].tempMaxNight = auxStructLimites[i].maxNight;
+          state.datosRoom[i].tempMinNight = auxStructLimites[i].minNight;
 
-          if (CAN.checkPendingTransmission() != CAN_TXPENDING)
-            CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &i);
-
-          so.signalSem(sCanCtrl);
+          //PRINTS
+          Serial.print("Los limites maximos de la habitacion ");
+          j = i + 1;
+          Serial.print(j);
+          Serial.print(" es ");
+          Serial.println(state.datosRoom[i].tempMaxDay);
         }
-      }
-    }
 
+        for (int i = 0; i < 4; i++) {
+          if (state.momentDay) { //caso límites día
+
+            if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxDay || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinDay) {
+
+              //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+              so.waitSem(sCanCtrl);
+
+              if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+                CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &i);
+
+              so.signalSem(sCanCtrl);
+            }
+
+          }  else {
+
+            if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxNight || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinNight) {
+              //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
+              so.waitSem(sCanCtrl);
+
+              if (CAN.checkPendingTransmission() != CAN_TXPENDING)
+                CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(uint8_t), (INT8U *) &i);
+
+              so.signalSem(sCanCtrl);
+            }
+          }
+        }
+    */
 
     //Cálculo de la Actuación
 
@@ -379,19 +379,18 @@ int j;
       Serial.println(state.datosRoom[i].actuacion);
     }
 
-    //Serial.print("actuacion: ");
-    //Serial.println( state.datosRoom1.actuacion);
-
     //Transmitir Actuación
 
     for (int i = 0; i < 4; i++) {
 
-      infoSimulateTemp.numRoom = (i + 1);
+      infoSimulateTemp.numRoom = i;
       infoSimulateTemp.tempExt = state.tempExt;
       infoSimulateTemp.tempInt = state.datosRoom[i].tempInt;
       infoSimulateTemp.actuacion = state.datosRoom[i].actuacion;
 
       so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
+      Serial.println("hecho el MB");
+      delay(1000);
     }
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
@@ -408,18 +407,13 @@ void SimulateTempInt()
   int j;
 
   while (true) {
-    so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
+     Serial.println("antes de wait de simulateTempInt");
+     so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
+    Serial.println("dsps wait de simulatetempint");
     infoSimulateTemp = *rxStructInfoMessage;
 
     //Formula de la nueva Tª interior
     newTempInt = 0.5 * infoSimulateTemp.actuacion + 0.25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
-
-    /*Serial.print("Habitacion: ");
-      Serial.print(infoSimulateTemp.numRoom);
-
-      Serial.print("   New Temp Int: ");
-      Serial.println(newTempInt);
-      Serial.println("******************");*/
 
     //Actualizamos el valor
     so.waitSem(sTempInt);
@@ -428,12 +422,12 @@ void SimulateTempInt()
 
     so.signalSem(sTempInt);
 
-       //PRINTS
-      Serial.print("La NUEVA temperatura de la habitacion ");
-      j = infoSimulateTemp.numRoom + 1;
-      Serial.print(j);
-      Serial.print(" es ");
-      Serial.println(tempIntRoom[infoSimulateTemp.numRoom]);
+    //PRINTS
+    Serial.print("La NUEVA temperatura de la habitacion ");
+    j = infoSimulateTemp.numRoom + 1;
+    Serial.print(j);
+    Serial.print(" es ");
+    Serial.println(tempIntRoom[infoSimulateTemp.numRoom]);
 
   }
 
@@ -504,8 +498,6 @@ void KeyDetector()
     //distinguimos los diferentes posibles casos:
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
-      //Serial.print("******** K E Y !!!!!!!!: ");
-      //Serial.println(key);
       auxKey = key;
       so.signalMBox(mbNumRoom, (byte*) &auxKey);
 
@@ -589,7 +581,7 @@ void InsertTemp() {
     // Wait until receiving the new state from KeyDetector
     so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
 
-    auxNumRoom = (*rxNumRoomMessage) + 1;
+    auxNumRoom = *rxNumRoomMessage; //posibles valores son 0,1,2,3.
 
     // Read adcValue (shared with ShareAdcValue)
     so.waitSem(sDatosTemp);
@@ -607,7 +599,7 @@ void InsertTemp() {
     so.signalSem(sDatosTemp);
 
     Serial.print("Habitacion: ");
-    Serial.println(Goal.numRoom);
+    Serial.println(Goal.numRoom + 1);
 
     Serial.print("Temperatura: ");
     Serial.println(Goal.tempGoal);
@@ -861,14 +853,13 @@ void loop() {
     fCANEvent = so.defFlag();
 
     // Definition and initialization of tasks
-
+    so.defTask(SimulateTempInt, PRIO_TASK_SIMULATE_TEMP_INT);
     so.defTask(State, PRIO_TASK_STATE);
     so.defTask(KeyDetector, PRIO_TASK_KeyDetector);
     so.defTask(ShareAdcValue, PRIO_TASK_ShareAdcValue);
     so.defTask(InsertTemp, PRIO_TASK_InsertTemp);
     so.defTask(InsertComandos, PRIO_TASK_InsertComandos);
     so.defTask(Share, PRIO_TASK_SHARE);
-    so.defTask(SimulateTempInt, PRIO_TASK_SIMULATE_TEMP_INT);
 
     //Set up adc
     hib.adcSetTimerDriven(TIMER_TICKS_FOR_500ms, (tClkPreFactType) TIMER_PSCALER_FOR_500ms, adcHook);
