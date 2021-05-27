@@ -266,7 +266,7 @@ void State()
   typeLimitesRoom auxStructLimites[4];
 
   uint8_t numRoom;
-
+int j;
 
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
@@ -287,13 +287,11 @@ void State()
 
     so.signalSem(sShare);
 
-    Serial.println("TASK_state:  Antes wait");
     // Read TempExt (shared with the task Share)
     so.waitSem(sDatosTemp);
     auxGoal = Goal;
 
     so.signalSem(sDatosTemp);
-    Serial.println("TASK_state: dsps signal");
 
     //Actualizar el valor
     state.datosRoom[auxGoal.numRoom].tempGoal = auxGoal.tempGoal;
@@ -304,6 +302,14 @@ void State()
 
     for (int i = 0; i < 4; i++) {
       state.datosRoom[i].tempInt = tempIntRoom[i];
+
+      //PRINTS
+      Serial.print("Temperatura interior de la habitacion ");
+      j = i + 1;
+      Serial.print(j);
+      Serial.print(" es ");
+      Serial.println(state.datosRoom[i].tempInt);
+      
     }
 
     so.signalSem(sTempInt);
@@ -322,6 +328,13 @@ void State()
       state.datosRoom[i].tempMinDay = auxStructLimites[i].minDay;
       state.datosRoom[i].tempMaxNight = auxStructLimites[i].maxNight;
       state.datosRoom[i].tempMinNight = auxStructLimites[i].minNight;
+
+      //PRINTS
+      Serial.print("Los limites maximos de la habitacion ");
+      j = i + 1;
+      Serial.print(j);
+      Serial.print(" es ");
+      Serial.println(state.datosRoom[i].tempMaxDay);
     }
 
     for (int i = 0; i < 4; i++) {
@@ -357,6 +370,13 @@ void State()
 
     for (int i = 0; i < 4; i++) {
       state.datosRoom[i].actuacion = (state.datosRoom[i].tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom[i].tempInt) / 0.6;
+
+      //PRINTS
+      Serial.print("La Actuacion de la habitacion ");
+      j = i + 1;
+      Serial.print(j);
+      Serial.print(" es ");
+      Serial.println(state.datosRoom[i].actuacion);
     }
 
     //Serial.print("actuacion: ");
@@ -385,6 +405,7 @@ void SimulateTempInt()
   typeTempInfo infoSimulateTemp;
   typeTempInfo * rxStructInfoMessage;
   float newTempInt;
+  int j;
 
   while (true) {
     so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
@@ -406,6 +427,13 @@ void SimulateTempInt()
     tempIntRoom[infoSimulateTemp.numRoom] = newTempInt;
 
     so.signalSem(sTempInt);
+
+       //PRINTS
+      Serial.print("La NUEVA temperatura de la habitacion ");
+      j = infoSimulateTemp.numRoom + 1;
+      Serial.print(j);
+      Serial.print(" es ");
+      Serial.println(tempIntRoom[infoSimulateTemp.numRoom]);
 
   }
 
