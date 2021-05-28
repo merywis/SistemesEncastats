@@ -148,13 +148,15 @@ void isrCAN()
     switch (CAN.getRxMsgId())
     {
       case CAN_ID_PRINT_TEMP:
+        Serial.println("isr caso temp");
         CAN.getRxMsgData((byte*) &rxMessageTemp);
         so.setFlag(fCANPrintEvent, maskRxPrintEvent);
         break;
 
- case CAN_ID_ALARM:
+      case CAN_ID_ALARM:
+        Serial.println("isr caso alarma");
         CAN.getRxMsgData((byte*) &rxNumRoom);
-        so.setFlag(fCANPrintEvent, maskRxPrintEvent);
+        so.setFlag(fAlarmEvent, maskAlarmEvent);
         break;
 
       default:
@@ -215,7 +217,7 @@ void PrintTemp()
 
     //Distinguimos qué tipo de Tª hay q imprimir:
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
-  Serial.println("caso temp ext");
+      Serial.println("caso temp ext");
       so.waitSem(sTempExt);
 
       auxTempExt = TempExt;
@@ -242,12 +244,16 @@ void PrintTemp()
 
 
     } else if (auxRxMessageTemp.typeInfo == 7) {
-        Serial.println("caso temp ints");
-      arrayTempInt[auxRxMessageTemp.numRoom - 1] = auxRxMessageTemp.tempInt;
-
+      Serial.print("caso temp ints: +");
+      
+      arrayTempInt[auxRxMessageTemp.numRoom] = auxRxMessageTemp.tempInt;
+      Serial.println(arrayTempInt[auxRxMessageTemp.numRoom]);
+      
       // hib.ledToggle(1); // for debugging
-
-      if (auxRxMessageTemp.numRoom == 4) {
+      Serial.print("num rooms: +");
+      Serial.println(auxRxMessageTemp.numRoom);
+      
+      if (auxRxMessageTemp.numRoom == 3) {
         // hib.ledToggle(4); // for debugging
         // The LCD is a critial region itself (shared between PrintTemp and Alarm)
         so.waitSem(sLCD);
@@ -286,7 +292,7 @@ void DetectTempExt()
   float celsius;
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
-  
+
   while (true)
   {
 
@@ -327,7 +333,7 @@ void TimetableHeating()
     // Sample left-handed LDR (Light-Dependant Resistor) sensor
     ldrAdcValue = hib.ldrReadAdc(hib.LEFT_LDR_SENS); //Aquí mos retorna el valor en el rang adc 0-1024
     //Serial.print("Left ldr sensor -> adc = ");
-   // Serial.println(ldrAdcValue);
+    // Serial.println(ldrAdcValue);
 
     //ara ho haurem de mapear en els valors que necessitem.
     if (ldrAdcValue < 512) {
@@ -335,7 +341,7 @@ void TimetableHeating()
     } else {
       light = true;
     }
-    
+
     //Se lo enviamos a ShareTime
     so.signalMBox(mbLight, (byte*) &light);
 
@@ -374,21 +380,22 @@ void Alarm()
 {
   uint8_t  auxNumRoom;
 
-  const uint8_t TAM = 9;
-  const uint8_t Notes[TAM] = {MI, MI, FA, SOL, SOL, FA, MI, RE, DO};
+  const uint8_t TAM = 10;
+  const uint8_t Notes[TAM] = {SI, SI, SI, SI, DO, SI, SI, SI, SI, DO};
   uint8_t c;
-  
+
   while (true) {
-   // Wait until any of the bits of the flag fCANPrintEvent
-    // indicated by the bits of maskRxPrintEvent are set to '1'
+    // Wait until any of the bits of the flag fAlarmEvent
+    // indicated by the bits of maskAlarmEvent are set to '1'
     so.waitFlag(fAlarmEvent, maskAlarmEvent);
 
-    // Clear the maskRxPrintEvent bits of flag fCANPrintEvent to not process the same event twice
+    // Clear the maskAlarmEvent bits of flag fAlarmEvent to not process the same event twice
     so.clearFlag(fAlarmEvent, maskAlarmEvent);
-    auxNumRoom = rxNumRoom;
-    //Simulate alarm
-    hib.ledToggle(auxNumRoom); 
 
+    auxNumRoom = rxNumRoom;
+
+    //Simulate alarm
+    hib.ledToggle(auxNumRoom);
 
     for (int i = 0; i < TAM; i++) {
       c = Notes[i];
@@ -468,6 +475,7 @@ void loop() {
 
     // Definition and initialization of flags
     fCANPrintEvent = so.defFlag();
+    fAlarmEvent = so.defFlag();
 
     // Definition and initialization of tasks
     so.defTask(PrintTemp, PRIO_TASK_PrintTemp);
@@ -475,7 +483,7 @@ void loop() {
     so.defTask(TimetableHeating, PRIO_TASK_TIMETABLE_HEATING);
     so.defTask(ShareTime, PRIO_TASK_SHARE_TIME);
     so.defTask(Alarm, PRIO_TASK_ALARM);
-    
+
 
 
     //Set up timer 5 so that the SO can regain the CPU every tick
