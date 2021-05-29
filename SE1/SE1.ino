@@ -23,11 +23,11 @@ MCP_CAN CAN(SPI_CS_PIN);
 
 #define PRIO_TASK_STATE 1
 #define PRIO_TASK_SIMULATE_TEMP_INT 2 //esta tiene que tener mayor prioridad que state porq si no no le deja activarse
-#define PRIO_TASK_KeyDetector 7
-#define PRIO_TASK_ShareAdcValue 4
+#define PRIO_TASK_KeyDetector 3
+#define PRIO_TASK_ShareAdcValue 2
 #define PRIO_TASK_InsertTemp 3
-#define PRIO_TASK_InsertComandos 6
-#define PRIO_TASK_SHARE 5
+#define PRIO_TASK_InsertComandos 3
+#define PRIO_TASK_SHARE 3
 
 
 #define CAN_ID_PRINT_TEMP 1
@@ -36,10 +36,10 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_ALARM 4
 
 
-#define PERIOD_TASK_STATE 10
-#define PERIOD_TASK_INSERTCOMANDOS 3
+#define PERIOD_TASK_STATE 1
+#define PERIOD_TASK_INSERTCOMANDOS 1
 
-//prioridades - stacksize 256 - ir comentando y descomentando tasks - periodo
+
 /******************************************************************************/
 /** Global const and variables ************************************************/
 /******************************************************************************/
@@ -270,9 +270,9 @@ void State()
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
 
+
   while (true)
   {
-    hib.ledToggle(0);
     // Read TempExt (shared with the task Share)
     so.waitSem(sShare);
 
@@ -387,6 +387,7 @@ void State()
     }
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
+
   }
 }
 
@@ -618,6 +619,11 @@ void InsertComandos()
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
 
+  
+  unsigned long tiempo1 = 0;
+  unsigned long tiempo2 = 0;
+  unsigned long tiempoSegundos = 0;
+
   while (true)
   {
 
@@ -799,7 +805,7 @@ void loop() {
     Serial.println(" MAIN ");
     //Prints para la tarea InsertComandos: ¿?¿?¿? maria: a mi no me gusta que esté aquí
     Serial.println("Hola :)! Introduce el número de habitación + límite superior + límite inferior + momento del día");
-    Serial.println("Por ejemplo: 2 27 17 dia");
+    Serial.println("Por ejemplo: 2 27.0 17.0 d");
 
     // Definition and initialization of semaphores
     sTempInt = so.defSem(1); // intially accesible

@@ -24,14 +24,14 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_LIGHT 3
 #define CAN_ID_ALARM 4
 
-#define PRIO_TASK_PrintTemp 6
-#define PRIO_TASK_DETECT_TEMP_EXT 3
-#define PRIO_TASK_TIMETABLE_HEATING 4
-#define PRIO_TASK_SHARE_TIME 5
-#define PRIO_TASK_ALARM 3
+#define PRIO_TASK_PrintTemp 2
+#define PRIO_TASK_DETECT_TEMP_EXT 1
+#define PRIO_TASK_TIMETABLE_HEATING 1
+#define PRIO_TASK_SHARE_TIME 2
+#define PRIO_TASK_ALARM 2
 
-#define PERIOD_TASK_DETECT_TEMP_EXT 10
-#define PERIOD_TASK_TIMETABLE_HEATING 10
+#define PERIOD_TASK_DETECT_TEMP_EXT 1
+#define PERIOD_TASK_TIMETABLE_HEATING 1
 
 
 #define DO 1
@@ -230,10 +230,11 @@ void PrintTemp()
       hib.lcdClear();
       hib.lcdSetCursorFirstLine();
       if (auxMomentDay) {
-        hib.lcdPrint("day");
+        sprintf(charBuff, "%s", "day");
       } else {
-        hib.lcdPrint("night");
+        sprintf(charBuff, "%s", "night");
       }
+      hib.lcdPrint(charBuff);
 
       hib.lcdSetCursorSecondLine();
       dtostrf(auxTempExt, 1, 2, floatBuffer);
@@ -295,7 +296,6 @@ void DetectTempExt()
 
   while (true)
   {
-
     celsius = hib.temReadCelsius(hib.LEFT_TEM_SENS);
 
     so.waitSem(sTempExt);
@@ -352,7 +352,7 @@ void TimetableHeating()
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
 
     so.signalSem(sCanCtrl);
-
+    
     nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
   }
@@ -380,8 +380,8 @@ void Alarm()
 {
   uint8_t  auxNumRoom;
 
-  const uint8_t TAM = 10;
-  const uint8_t Notes[TAM] = {SI, SI, SI, SI, DO, SI, SI, SI, SI, DO};
+  const uint8_t TAM = 6;
+  const uint8_t Notes[TAM] = {SI, SI, DO, SI, SI, DO};
   uint8_t c;
 
   while (true) {
@@ -487,7 +487,7 @@ void loop() {
 
 
     //Set up timer 5 so that the SO can regain the CPU every tick
-    hib.setUpTimer5(TIMER_TICKS_FOR_125ms, TIMER_PSCALER_FOR_125ms, timer5Hook);
+    hib.setUpTimer5(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, timer5Hook);
 
 
     // Start mutltasking (program does not return to 'main' from hereon)
