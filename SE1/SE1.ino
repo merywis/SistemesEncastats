@@ -28,13 +28,19 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PRIO_TASK_InsertTemp 3
 #define PRIO_TASK_InsertComandos 3
 #define PRIO_TASK_SHARE 3
+|
 
 
 #define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
 #define CAN_ID_ALARM 4
+//RMPO: state 
+//tratamos las esporadicas como periodicas. miramos el peor caso en el q se puedan activar
+//y asumimos que el periodo es ese peor caso
 
+//1) cambiar periodos. y prioridades siguiendo un algoritmo
+//2) poner terminal valores guays
 
 #define PERIOD_TASK_STATE 1
 #define PERIOD_TASK_INSERTCOMANDOS 1
@@ -52,7 +58,7 @@ volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdc
 // shared between ShareAdcValue (writes) and InsertTemp (reads)
 volatile float sampledAdc = 0.0; // critical region between ShareAdcValue and InsertTemp
 
-volatile uint8_t key;
+volatile uint8_t key=255;
 
 volatile float rxTemp = 0.0; //tienen q ser globales ? :(
 volatile boolean rxTime = false; //tienen q ser globales ? :(
@@ -488,7 +494,7 @@ void KeyDetector()
     //hib.ledToggle(3);
 
     //distinguimos los diferentes posibles casos:
-    if (key == 4 || key == 1 || key == 2 || key == 3) {
+    if (key == 0 || key == 1 || key == 2 || key == 3) {
       //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
       auxKey = key;
       so.signalMBox(mbNumRoom, (byte*) &auxKey);
