@@ -90,27 +90,6 @@ struct structMessageTemp
 typedef structMessageTemp typeMessageTemp;
 
 typeMessageTemp rxMessageTemp;
-/******************************************************************************/
-/** Additional functions prototypes *******************************************/
-/******************************************************************************/
-
-
-
-/******************************************************************************/
-/** Hooks *********************************************************************/
-/******************************************************************************/
-
-
-/*****************
-  KEYPAD hook
-******************/
-
-
-
-/*****************
-  ADCISR
-******************/
-
 
 /******************************************************************************/
 /** ISR *********************************************************************/
@@ -214,7 +193,7 @@ void PrintTemp()
     auxMomentDay = momentDay;
 
     so.signalSem(sTime);
-
+    hib.lcdPrint("hola");
     //Distinguimos qué tipo de Tª hay q imprimir:
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
       Serial.println("caso temp ext");
@@ -230,6 +209,7 @@ void PrintTemp()
       hib.lcdClear();
       hib.lcdSetCursorFirstLine();
       if (auxMomentDay) {
+        Serial.println("holi");
         sprintf(charBuff, "%s", "day");
       } else {
         sprintf(charBuff, "%s", "night");
@@ -246,14 +226,14 @@ void PrintTemp()
 
     } else if (auxRxMessageTemp.typeInfo == 7) {
       Serial.print("caso temp ints: +");
-      
+
       arrayTempInt[auxRxMessageTemp.numRoom] = auxRxMessageTemp.tempInt;
       Serial.println(arrayTempInt[auxRxMessageTemp.numRoom]);
-      
+
       // hib.ledToggle(1); // for debugging
       Serial.print("num rooms: +");
       Serial.println(auxRxMessageTemp.numRoom);
-      
+
       if (auxRxMessageTemp.numRoom == 3) {
         // hib.ledToggle(4); // for debugging
         // The LCD is a critial region itself (shared between PrintTemp and Alarm)
@@ -352,7 +332,7 @@ void TimetableHeating()
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
 
     so.signalSem(sCanCtrl);
-    
+
     nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
   }
@@ -379,9 +359,10 @@ void ShareTime()
 void Alarm()
 {
   uint8_t  auxNumRoom;
+  char charBuff[20];
 
-  const uint8_t TAM = 6;
-  const uint8_t Notes[TAM] = {SI, SI, DO, SI, SI, DO};
+  const uint8_t TAM = 3;
+  const uint8_t Notes[TAM] = {SI, SI, DO};
   uint8_t c;
 
   while (true) {
@@ -395,14 +376,20 @@ void Alarm()
     auxNumRoom = rxNumRoom;
 
     //Simulate alarm
-    hib.ledToggle(auxNumRoom);
+    hib.ledToggle(auxNumRoom - 1);
 
     for (int i = 0; i < TAM; i++) {
       c = Notes[i];
       playNote(c, 4, 500);
     }
+    //falta hacer el print por el lcd de el num de habitacion en la q ha saltado la alarma
 
-
+    so.waitSem(sLCD);
+    hib.lcdClear();
+    sprintf(charBuff, "ALARM in room: %d ", auxNumRoom);
+    hib.lcdPrint(charBuff);
+    so.signalSem(sLCD);
+    //hib.lcdClear();
   }
 }
 

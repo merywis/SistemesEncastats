@@ -28,7 +28,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PRIO_TASK_InsertTemp 3
 #define PRIO_TASK_InsertComandos 3
 #define PRIO_TASK_SHARE 3
-|
+
 
 
 #define CAN_ID_PRINT_TEMP 1
@@ -271,6 +271,7 @@ void State()
   typeLimitesRoom auxStructLimites[4];
 
   uint8_t numRoom;
+  float temp1,temp2;
   int j;
 
   unsigned long nextActivationTick;
@@ -391,9 +392,10 @@ void State()
 
       so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
     }
+
+    
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
-
   }
 }
 
@@ -504,6 +506,7 @@ void KeyDetector()
       //Rellenamos el campo necesario en el struct MessageTemp1 para indicar que lo que se desea imprimir es la Tª ext
       MessageTemp[0].typeInfo = 8;
       // Send sensor via CAN
+Serial.println("caso temp ext: ");
 
       so.waitSem(sCanCtrl);
 
@@ -515,7 +518,7 @@ void KeyDetector()
     } else if (key == 7) {
       //Aquí deseamos imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe en un único "envío", vamos a enviar
       //un mensaje por cada habitación
-
+Serial.println("caso temp int: ");
       for (int i = 0; i < 4; i++) {
 
         MessageTemp[i].typeInfo = 7;
