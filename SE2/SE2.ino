@@ -209,7 +209,6 @@ void PrintTemp()
       hib.lcdClear();
       hib.lcdSetCursorFirstLine();
       if (auxMomentDay) {
-        Serial.println("holi");
         sprintf(charBuff, "%s", "day");
       } else {
         sprintf(charBuff, "%s", "night");
