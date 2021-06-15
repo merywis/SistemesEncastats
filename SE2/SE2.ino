@@ -193,7 +193,6 @@ void PrintTemp()
     auxMomentDay = momentDay;
 
     so.signalSem(sTime);
-    hib.lcdPrint("hola");
     //Distinguimos qué tipo de Tª hay q imprimir:
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
       Serial.println("caso temp ext");
@@ -329,7 +328,6 @@ void TimetableHeating()
     //CAN
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
-
     so.signalSem(sCanCtrl);
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; // Calculate next activation time;
@@ -371,7 +369,7 @@ void Alarm()
 
     // Clear the maskAlarmEvent bits of flag fAlarmEvent to not process the same event twice
     so.clearFlag(fAlarmEvent, maskAlarmEvent);
-
+Serial.println("hola");
     auxNumRoom = rxNumRoom;
 
     //Simulate alarm

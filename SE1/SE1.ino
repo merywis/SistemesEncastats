@@ -35,14 +35,8 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_TEMP_EXT 2
 #define CAN_ID_LIGHT 3
 #define CAN_ID_ALARM 4
-//RMPO: state 
-//tratamos las esporadicas como periodicas. miramos el peor caso en el q se puedan activar
-//y asumimos que el periodo es ese peor caso
 
-//1) cambiar periodos. y prioridades siguiendo un algoritmo
-//2) poner terminal valores guays
-
-#define PERIOD_TASK_STATE 1
+#define PERIOD_TASK_STATE 5
 #define PERIOD_TASK_INSERTCOMANDOS 1
 
 
@@ -58,7 +52,7 @@ volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdc
 // shared between ShareAdcValue (writes) and InsertTemp (reads)
 volatile float sampledAdc = 0.0; // critical region between ShareAdcValue and InsertTemp
 
-volatile uint8_t key=255;
+volatile uint8_t key = 255;
 
 volatile float rxTemp = 0.0; //tienen q ser globales ? :(
 volatile boolean rxTime = false; //tienen q ser globales ? :(
@@ -271,8 +265,8 @@ void State()
   typeLimitesRoom auxStructLimites[4];
 
   uint8_t numRoom;
-  float temp1,temp2;
-  int j;
+  float temp1, temp2;
+  int j,x;
 
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
@@ -311,13 +305,13 @@ void State()
       state.datosRoom[i].tempInt = tempIntRoom[i];
 
       //PRINTS
-/*
-      Serial.print("Temperatura interior de la habitacion ");
-      j = i + 1;
-      Serial.print(j);
-      Serial.print(" es ");
-      Serial.println(state.datosRoom[i].tempInt);
-*/
+      /*
+            Serial.print("Temperatura interior de la habitacion ");
+            j = i + 1;
+            Serial.print(j);
+            Serial.print(" es ");
+            Serial.println(state.datosRoom[i].tempInt);
+      */
     }
 
     so.signalSem(sTempInt);
@@ -337,8 +331,9 @@ void State()
 
 
     for (int i = 0; i < 4; i++) {
+       hib.ledToggle(5);
       if (state.momentDay) { //caso límites día
-
+ hib.ledToggle(3);
         if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxDay || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinDay) {
           hib.ledToggle(2);
           //Serial.println("*******");
@@ -351,7 +346,7 @@ void State()
 
         }
       } else {
-
+ hib.ledToggle(1);
         if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxNight || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinNight) {
           //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
 
@@ -364,8 +359,6 @@ void State()
         }
       }
     }
-
-
 
     //Cálculo de la Actuación
 
@@ -393,7 +386,35 @@ void State()
       so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
     }
 
-    
+    x = 1;
+    term.move(6, x);
+    for (int i = 0; i < NUM_ROOM; i++) {
+      term.print("Room ");
+      term.print(i + 1);
+      term.move(7, x);
+      term.print("Indoor Temp: ");
+      term.move(8, x);
+      term.print(state.datosRoom[i].tempInt);
+      term.move(9, x);
+      term.print("Temp Goal:  ");
+      term.move(10, x);
+      term.print(state.datosRoom[i].tempGoal);
+      term.move(11, x);
+      term.print("Day limits:  ");
+      term.move(12, x);
+      term.print(state.datosRoom[i].tempMinDay);
+      term.move(13, x);
+      term.print(state.datosRoom[i].tempMaxDay);
+      term.move(14, x);
+      term.print("Night limits:  ");
+      term.move(15, x);
+      term.print(state.datosRoom[i].tempMinNight);
+      term.move(16, x);
+      term.print(state.datosRoom[i].tempMaxNight);
+      x = x + 25;    
+      term.move(6, x);
+    }
+
     nextActivationTick = nextActivationTick +  PERIOD_TASK_STATE; // Calculate next activation time;
     so.delayUntilTick(nextActivationTick);
   }
@@ -506,7 +527,7 @@ void KeyDetector()
       //Rellenamos el campo necesario en el struct MessageTemp1 para indicar que lo que se desea imprimir es la Tª ext
       MessageTemp[0].typeInfo = 8;
       // Send sensor via CAN
-Serial.println("caso temp ext: ");
+      Serial.println("caso temp ext: ");
 
       so.waitSem(sCanCtrl);
 
@@ -518,7 +539,7 @@ Serial.println("caso temp ext: ");
     } else if (key == 7) {
       //Aquí deseamos imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe en un único "envío", vamos a enviar
       //un mensaje por cada habitación
-Serial.println("caso temp int: ");
+      Serial.println("caso temp int: ");
       for (int i = 0; i < 4; i++) {
 
         MessageTemp[i].typeInfo = 7;
@@ -571,12 +592,6 @@ void InsertTemp() {
     Goal.tempGoal = auxSampledAdc;
 
     so.signalSem(sDatosTemp);
-
-    Serial.print("Habitacion: ");
-    Serial.println(Goal.numRoom + 1);
-
-    Serial.print("Temperatura: ");
-    Serial.println(Goal.tempGoal);
   }
 }
 
@@ -628,7 +643,7 @@ void InsertComandos()
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
 
-  
+
   unsigned long tiempo1 = 0;
   unsigned long tiempo2 = 0;
   unsigned long tiempoSegundos = 0;
@@ -649,20 +664,16 @@ void InsertComandos()
           if (c == '1' || c == '2' || c == '3' || c == '4') {
             room = (int)c - 48;
             turno++;
-            Serial.print("Habitacion Seleccionada Correctamente: ");
-            Serial.println(room);
           } else {
-            Serial.println("Error en la Seleccion de Habitación");
+            //Serial.println("Error en la Seleccion de Habitación");
           }
           break;
 
         case 1:
           if (c == ' ') { //El espacio
             turno++;
-            Serial.println("FIN Habitacion Seleccionada Correctamente");
           } else {
             turno = 0;
-            Serial.println("Error en FIN Seleccion de Habitación");
           }
           break;
 
@@ -681,13 +692,10 @@ void InsertComandos()
               tempMax = tempMax + (((float) ((int)c - 48)) / 10);
               i = 0;
               turno++;
-              Serial.print("Temperatura Maxima Seleccionada Correctamente: ");
-              Serial.println(tempMax);
             }
 
           } else {
             turno = 0;
-            Serial.println("Error en la Temperatura Maxima Seleccion de Habitación");
           }
 
           break;
@@ -695,10 +703,8 @@ void InsertComandos()
         case 3:
           if (c == ' ') { //El espacio
             turno++;
-            Serial.println("FIN Temperatura Maxima Seleccionada Correctamente");
           } else {
             turno = 0;
-            Serial.println("Error en FIN Seleccion de Temperatura Maxima");
           }
           break;
 
@@ -717,23 +723,21 @@ void InsertComandos()
               tempMin = tempMin + (((float) ((int)c - 48)) / 10);
               i = 0;
               turno++;
-              Serial.print("Temperatura Minima Seleccionada Correctamente: ");
-              Serial.println(tempMin);
             }
 
           } else {
             turno = 0;
-            Serial.println("Error en la Temperatura Minima Seleccion de Habitación");
+            //Serial.println("Error en la Temperatura Minima Seleccion de Habitación");
           }
 
           break;
         case 5:
           if (c == ' ') { //El espacio
             turno++;
-            Serial.println("FIN Temperatura Minima Seleccionada Correctamente");
+            //Serial.println("FIN Temperatura Minima Seleccionada Correctamente");
           } else {
             turno = 0;
-            Serial.println("Error en FIN Seleccion de Temperatura Minima");
+            //Serial.println("Error en FIN Seleccion de Temperatura Minima");
           }
           break;
 
@@ -744,19 +748,19 @@ void InsertComandos()
             //Actualizar el valor de los límites en la habitación seleccionada
             so.waitSem(sDatosTemp);
             if (c == 'd') {
-              arrayLimites[room].maxDay = tempMax;
-              arrayLimites[room].minDay = tempMin;
+              arrayLimites[room-1].maxDay = tempMax;
+              arrayLimites[room-1].minDay = tempMin;
             } else {
-              arrayLimites[room].maxNight = tempMax;
-              arrayLimites[room].minNight = tempMin;
+              arrayLimites[room-1].maxNight = tempMax;
+              arrayLimites[room-1].minNight = tempMin;
             }
             so.signalSem(sDatosTemp);
 
-            Serial.println("FIN Momento del Dia Seleccionada Correctamente: ");
-            Serial.println(c);
+            //Serial.println("FIN Momento del Dia Seleccionada Correctamente: ");
+            //Serial.println(c);
           } else {
             turno = 0;
-            Serial.println("Error en el Momento del dia");
+           // Serial.println("Error en el Momento del dia");
           }
 
           break;
