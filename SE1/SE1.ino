@@ -16,20 +16,19 @@ SO so;
 Terminal term;
 
 MCP_CAN CAN(SPI_CS_PIN);
+
 /******************************************************************************/
 /** DEFINE ********************************************************************/
 /******************************************************************************/
 #define NUM_ROOM 4
 
 #define PRIO_TASK_STATE 1
-#define PRIO_TASK_SIMULATE_TEMP_INT 2 //esta tiene que tener mayor prioridad que state porq si no no le deja activarse
+#define PRIO_TASK_SIMULATE_TEMP_INT 2
 #define PRIO_TASK_KeyDetector 3
 #define PRIO_TASK_ShareAdcValue 2
 #define PRIO_TASK_InsertTemp 3
 #define PRIO_TASK_InsertComandos 3
 #define PRIO_TASK_SHARE 3
-
-
 
 #define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
@@ -38,7 +37,6 @@ MCP_CAN CAN(SPI_CS_PIN);
 
 #define PERIOD_TASK_STATE 5
 #define PERIOD_TASK_INSERTCOMANDOS 1
-
 
 /******************************************************************************/
 /** Global const and variables ************************************************/
@@ -50,14 +48,13 @@ volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdc
 // stores the last sampled value of the sensor
 // calculated upon adcValue
 // shared between ShareAdcValue (writes) and InsertTemp (reads)
-volatile float sampledAdc = 0.0; // critical region between ShareAdcValue and InsertTemp
-
+volatile float sampledAdc = 0.0;
 volatile uint8_t key = 255;
 
-volatile float rxTemp = 0.0; //tienen q ser globales ? :(
-volatile boolean rxTime = false; //tienen q ser globales ? :(
+volatile float rxTemp = 0.0;
+volatile boolean rxTime = false;
 
-volatile float TempExt = 24.0; //tienen q ser globales ? :(
+volatile float TempExt = 24.0;
 volatile boolean MomentDay = false;
 
 /********************************
@@ -96,11 +93,10 @@ MBox mbInfoTemp;
 /******************************************************************************/
 /** Definition of own types ***************************************************/
 /******************************************************************************/
-
 struct structRoom
 {
-  float tempGoal = 21.0; //
-  float tempInt = 23.0; //
+  float tempGoal = 21.0;
+  float tempInt = 23.0;
   float actuacion = 25.0;
   float tempMaxDay = 0.0;
   float tempMinDay = 0.0;
@@ -111,17 +107,16 @@ typedef structRoom typeRoom;
 
 struct structState
 {
-  float tempExt; // Number of edition
-  boolean momentDay = true; // true = day & false = night
+  float tempExt;
+  boolean momentDay = true;
   typeRoom datosRoom[4];
 };
 typedef structState typeState;
 
-
 struct structGoal
 {
-  uint8_t numRoom = 1; // Number of edition
-  float tempGoal = 21.00; // Number of edition
+  uint8_t numRoom = 1;
+  float tempGoal = 21.00;
 };
 typedef structGoal typeGoal;
 
@@ -167,7 +162,7 @@ typedef structTempInfo typeTempInfo;
 ******************/
 void keyHook(uint8_t newKey)
 {
-  key = newKey;
+  key = newKey; //guardar el valor de la nueva tecla
 
   so.setFlag(fKeyEvent, maskKeyEvent);
 }
@@ -179,11 +174,9 @@ void keyHook(uint8_t newKey)
 
 void adcHook(uint16_t newAdcAdquiredValue)
 {
-  adcValue = newAdcAdquiredValue;
+  adcValue = newAdcAdquiredValue; //guardar el valor del nuevo ADC
 
-  // Awake task A by setting to '1' the bits of fExtEvent indicated by maskAdcEvent
   so.setFlag(fAdcEvent, maskAdcEvent);
-
 }
 
 /*****************
@@ -246,16 +239,7 @@ void isrCAN()
   TASKS declarations and implementations
 *******************************************/
 
-/* Task states
-
-  DESTROYED / uninitalized
-  BLOCKED / WAITING FOR SEMAPHORE-MAILBOX-FLAG
-  AUTO-SUSPENDED BY TIME
-  ACTIVE / ELIGIBLE / READY
-  RUNNING
-
-*/
-
+/* La tarea State es la tarea controladora del sistema */
 void State()
 {
 
@@ -266,7 +250,7 @@ void State()
 
   uint8_t numRoom;
   float temp1, temp2;
-  int j,x;
+  int j, x;
 
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
@@ -297,28 +281,18 @@ void State()
     //Actualizar el valor
     state.datosRoom[auxGoal.numRoom].tempGoal = auxGoal.tempGoal;
 
-    //Update the inner temperature of each room
-
     so.waitSem(sTempInt);
-    //Serial.print("Temperatura interior de la habitacion ");
+
+    //Actualizar el valor de la temp interior de cada hab.
     for (int i = 0; i < 4; i++) {
       state.datosRoom[i].tempInt = tempIntRoom[i];
-
-      //PRINTS
-      /*
-            Serial.print("Temperatura interior de la habitacion ");
-            j = i + 1;
-            Serial.print(j);
-            Serial.print(" es ");
-            Serial.println(state.datosRoom[i].tempInt);
-      */
     }
 
     so.signalSem(sTempInt);
 
-    //actualizar limites con struct q viene de structLimites (InsertComandos) ************
     so.waitSem(sDatosTemp);
 
+    //Actualizar el valor de los los límites en cada hab.
     for (int i = 0; i < 4; i++) {
       state.datosRoom[i].tempMaxDay = arrayLimites[i].maxDay;
       state.datosRoom[i].tempMinDay = arrayLimites[i].minDay;
@@ -328,17 +302,12 @@ void State()
 
     so.signalSem(sDatosTemp);
 
-
-
+    //Comprobar si las temp interiores han superado los límites en cada hab.
     for (int i = 0; i < 4; i++) {
-       hib.ledToggle(5);
       if (state.momentDay) { //caso límites día
- hib.ledToggle(3);
         if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxDay || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinDay) {
-          hib.ledToggle(2);
-          //Serial.println("*******");
-          //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
           so.waitSem(sCanCtrl);
+          
           if (CAN.checkPendingTransmission() != CAN_TXPENDING)
             CAN.sendMsgBufNonBlocking(CAN_ID_ALARM, CAN_EXTID, sizeof(int), (INT8U *) &i);
 
@@ -346,10 +315,8 @@ void State()
 
         }
       } else {
- hib.ledToggle(1);
         if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxNight || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinNight) {
-          //Enviar vía CAN el número de habitación en el que ha saltado la alarma:
-
+          
           so.waitSem(sCanCtrl);
 
           if (CAN.checkPendingTransmission() != CAN_TXPENDING)
@@ -360,22 +327,12 @@ void State()
       }
     }
 
-    //Cálculo de la Actuación
-
+    //Cálculo de la Actuación en cada habitación
     for (int i = 0; i < 4; i++) {
       state.datosRoom[i].actuacion = (state.datosRoom[i].tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom[i].tempInt) / 0.6;
-
-      //PRINTS
-      /*
-        Serial.print("La Actuacion de la habitacion ");
-        j = i + 1;
-        Serial.print(j);
-        Serial.print(" es ");
-        Serial.println(state.datosRoom[i].actuacion);*/
     }
 
     //Transmitir Actuación
-
     for (int i = 0; i < 4; i++) {
 
       infoSimulateTemp.numRoom = i;
@@ -386,6 +343,7 @@ void State()
       so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
     }
 
+    //Imprimir por la terminal la información del sistema
     x = 1;
     term.move(6, x);
     for (int i = 0; i < NUM_ROOM; i++) {
@@ -411,7 +369,7 @@ void State()
       term.print(state.datosRoom[i].tempMinNight);
       term.move(16, x);
       term.print(state.datosRoom[i].tempMaxNight);
-      x = x + 25;    
+      x = x + 25;
       term.move(6, x);
     }
 
@@ -420,6 +378,7 @@ void State()
   }
 }
 
+/* Tarea encargada de simular la temp interior de una habitación como si fuera un sensor */
 void SimulateTempInt()
 {
 
@@ -441,19 +400,11 @@ void SimulateTempInt()
     tempIntRoom[infoSimulateTemp.numRoom] = newTempInt;
 
     so.signalSem(sTempInt);
-
-    //PRINTS
-    /*
-      Serial.print("La NUEVA temperatura de la habitacion ");
-      j = infoSimulateTemp.numRoom + 1;
-      Serial.print(j);
-      Serial.print(" es ");
-      Serial.println(tempIntRoom[infoSimulateTemp.numRoom]);
-    */
   }
 
 }
 
+/* Tarea que recibe los mensajes del CAN y los guarda en variables globales*/
 void Share() {
 
   // define a mask to awake either by maskRxTempExtEvent or maskRxTimeEvent
@@ -502,10 +453,13 @@ void Share() {
   }
 }
 
+/* Detecta la tecla pulsada y realiza la acción correspondiente a la tecla */
 void KeyDetector()
 {
+  
   typeMessageTemp MessageTemp[4];
   uint8_t auxKey;
+  
   while (1)
   {
     // Wait until any of the bits of the flag fKeyEvent
@@ -514,8 +468,7 @@ void KeyDetector()
 
     // Clear the flag fKeyEvent to not process the same event twice
     so.clearFlag(fKeyEvent, maskKeyEvent);
-    //hib.ledToggle(3);
-
+    
     //distinguimos los diferentes posibles casos:
     if (key == 0 || key == 1 || key == 2 || key == 3) {
       //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
@@ -526,20 +479,16 @@ void KeyDetector()
       //Caso Tª exterior-> enviar valor key a través de CAN
       //Rellenamos el campo necesario en el struct MessageTemp1 para indicar que lo que se desea imprimir es la Tª ext
       MessageTemp[0].typeInfo = 8;
-      // Send sensor via CAN
-      Serial.println("caso temp ext: ");
 
       so.waitSem(sCanCtrl);
 
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp[0]);
-      hib.ledToggle(5);
       so.signalSem(sCanCtrl);
 
     } else if (key == 7) {
       //Aquí deseamos imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe en un único "envío", vamos a enviar
       //un mensaje por cada habitación
-      Serial.println("caso temp int: ");
       for (int i = 0; i < 4; i++) {
 
         MessageTemp[i].typeInfo = 7;
@@ -556,13 +505,12 @@ void KeyDetector()
           CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp[i]);
 
         so.signalSem(sCanCtrl);
-        delay(50);
       }
     }
   }
 }
 
-
+/* tarea encarga de compartir con la tarea state la temp deseada de una habitación */
 void InsertTemp() {
 
   uint8_t auxNumRoom;
@@ -571,7 +519,6 @@ void InsertTemp() {
   float auxSampledAdc;
 
   while (true) {
-    //Serial.println("hola ");
 
     // Wait until receiving the new state from KeyDetector
     so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
@@ -596,7 +543,7 @@ void InsertTemp() {
 }
 
 
-
+/* tarea encargada de obtener el valor del ADC, mapearlo y compartirlo a la tarea Insert Temp */
 void ShareAdcValue() {
 
   char str[16];
@@ -623,14 +570,15 @@ void ShareAdcValue() {
 
     so.waitSem(sDatosTemp);
 
-    sampledAdc = auxSampledAdc;
+    sampledAdc = auxSampledAdc; //Actualiza el valor del ADC compartido con la tarea InsertTemp
 
     so.signalSem(sDatosTemp);
+    
   }
 }
 
 
-
+/* tarea encargada de obtener los limites introducidos por el usuario a través de la terminal */
 void InsertComandos()
 {
   char c;
@@ -657,6 +605,8 @@ void InsertComandos()
     // Check whether or not a byte has been received from UART
     if (c != term.NO_CHAR_RX_UART)
     {
+      //La ejecución va por turnos. Cada turno es para introducir un elemento. El primero es 
+      //la habitacion luego las temp max y mín y luego si de dia o de noche.
       switch (turno)
       {
         case 0:
@@ -748,11 +698,11 @@ void InsertComandos()
             //Actualizar el valor de los límites en la habitación seleccionada
             so.waitSem(sDatosTemp);
             if (c == 'd') {
-              arrayLimites[room-1].maxDay = tempMax;
-              arrayLimites[room-1].minDay = tempMin;
+              arrayLimites[room - 1].maxDay = tempMax;
+              arrayLimites[room - 1].minDay = tempMin;
             } else {
-              arrayLimites[room-1].maxNight = tempMax;
-              arrayLimites[room-1].minNight = tempMin;
+              arrayLimites[room - 1].maxNight = tempMax;
+              arrayLimites[room - 1].minNight = tempMin;
             }
             so.signalSem(sDatosTemp);
 
@@ -760,7 +710,7 @@ void InsertComandos()
             //Serial.println(c);
           } else {
             turno = 0;
-           // Serial.println("Error en el Momento del dia");
+            // Serial.println("Error en el Momento del dia");
           }
 
           break;
@@ -778,6 +728,7 @@ void InsertComandos()
 /******************************************************************************/
 /** Setup *********************************************************************/
 /******************************************************************************/
+
 void setup() {
   //Init
   Serial.begin(115200); // SPEED
@@ -816,10 +767,7 @@ void loop() {
 
     Serial.println(" ");
     Serial.println(" MAIN ");
-    //Prints para la tarea InsertComandos: ¿?¿?¿? maria: a mi no me gusta que esté aquí
-    Serial.println("Hola :)! Introduce el número de habitación + límite superior + límite inferior + momento del día");
-    Serial.println("Por ejemplo: 2 27.0 17.0 d");
-
+    
     // Definition and initialization of semaphores
     sTempInt = so.defSem(1); // intially accesible
     sShare = so.defSem(1); // intially accesible
@@ -855,11 +803,3 @@ void loop() {
   }
 
 }
-
-
-
-
-
-/******************************************************************************/
-/** Additional functions ******************************************************/
-/******************************************************************************/

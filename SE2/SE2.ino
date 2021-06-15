@@ -152,27 +152,14 @@ void isrCAN()
 /******************************************
   TASKS declarations and implementations
 *******************************************/
-
-/* Task states
-
-  DESTROYED / uninitalized
-  BLOCKED / WAITING FOR SEMAPHORE-MAILBOX-FLAG
-  AUTO-SUSPENDED BY TIME
-  ACTIVE / ELIGIBLE / READY
-  RUNNING
-
-*/
-
+/* tarea encargada de imprimir las temp interiores de cada hab o la temp ext */
 void PrintTemp()
 {
-  //*************porq tenemos q usar una global.
   typeMessageTemp auxRxMessageTemp;
 
   float auxTempExt;
   boolean auxMomentDay;
   String momentOfDay;
-  //char strDay[3] = {'d','a','y'};
-  //char strNight[5] ={'n','i','g','h','t'};
   char momDay[5];
   float arrayTempInt[4];
 
@@ -193,9 +180,9 @@ void PrintTemp()
     auxMomentDay = momentDay;
 
     so.signalSem(sTime);
+    
     //Distinguimos qué tipo de Tª hay q imprimir:
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
-      Serial.println("caso temp ext");
       so.waitSem(sTempExt);
 
       auxTempExt = TempExt;
@@ -223,17 +210,10 @@ void PrintTemp()
 
 
     } else if (auxRxMessageTemp.typeInfo == 7) {
-      Serial.print("caso temp ints: +");
 
       arrayTempInt[auxRxMessageTemp.numRoom] = auxRxMessageTemp.tempInt;
-      Serial.println(arrayTempInt[auxRxMessageTemp.numRoom]);
-
-      // hib.ledToggle(1); // for debugging
-      Serial.print("num rooms: +");
-      Serial.println(auxRxMessageTemp.numRoom);
 
       if (auxRxMessageTemp.numRoom == 3) {
-        // hib.ledToggle(4); // for debugging
         // The LCD is a critial region itself (shared between PrintTemp and Alarm)
         so.waitSem(sLCD);
 
@@ -266,6 +246,7 @@ void PrintTemp()
   }
 }
 
+/* tarea encargada de obtener la temperatura exterior mediante un sensor */
 void DetectTempExt()
 {
   float celsius;
@@ -282,9 +263,6 @@ void DetectTempExt()
 
     so.signalSem(sTempExt);
 
-    //Serial.print("celsius:");
-    //Serial.println(celsius);
-
     so.waitSem(sCanCtrl);
 
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
@@ -292,12 +270,13 @@ void DetectTempExt()
 
     so.signalSem(sCanCtrl);
 
-    nextActivationTick = nextActivationTick +  PERIOD_TASK_DETECT_TEMP_EXT; // Calculate next activation time;
+    nextActivationTick = nextActivationTick +  PERIOD_TASK_DETECT_TEMP_EXT; 
     so.delayUntilTick(nextActivationTick);
   }
 
 }
 
+/* tarea encargada de obtener el momento del día según un sensor de luz */
 void TimetableHeating()
 {
   unsigned long nextActivationTick;
@@ -310,8 +289,6 @@ void TimetableHeating()
   {
     // Sample left-handed LDR (Light-Dependant Resistor) sensor
     ldrAdcValue = hib.ldrReadAdc(hib.LEFT_LDR_SENS); //Aquí mos retorna el valor en el rang adc 0-1024
-    //Serial.print("Left ldr sensor -> adc = ");
-    // Serial.println(ldrAdcValue);
 
     //ara ho haurem de mapear en els valors que necessitem.
     if (ldrAdcValue < 512) {
@@ -330,12 +307,13 @@ void TimetableHeating()
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
     so.signalSem(sCanCtrl);
 
-    nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; // Calculate next activation time;
+    nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; 
     so.delayUntilTick(nextActivationTick);
   }
 
 }
 
+/* tarea que comparte el momento del día con la tarea PrintTemp */
 void ShareTime()
 {
   boolean * rxLight;
@@ -352,7 +330,7 @@ void ShareTime()
   }
 }
 
-
+/* tarea que activa la alarma si supera una habitacion la temp limite */
 void Alarm()
 {
   uint8_t  auxNumRoom;
@@ -369,7 +347,6 @@ void Alarm()
 
     // Clear the maskAlarmEvent bits of flag fAlarmEvent to not process the same event twice
     so.clearFlag(fAlarmEvent, maskAlarmEvent);
-Serial.println("hola");
     auxNumRoom = rxNumRoom;
 
     //Simulate alarm
@@ -379,8 +356,7 @@ Serial.println("hola");
       c = Notes[i];
       playNote(c, 4, 500);
     }
-    //falta hacer el print por el lcd de el num de habitacion en la q ha saltado la alarma
-
+    
     so.waitSem(sLCD);
     hib.lcdClear();
     sprintf(charBuff, "ALARM in room: %d ", auxNumRoom);
@@ -468,12 +444,9 @@ void loop() {
     so.defTask(ShareTime, PRIO_TASK_SHARE_TIME);
     so.defTask(Alarm, PRIO_TASK_ALARM);
 
-
-
     //Set up timer 5 so that the SO can regain the CPU every tick
     hib.setUpTimer5(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, timer5Hook);
-
-
+    
     // Start mutltasking (program does not return to 'main' from hereon)
     so.enterMultiTaskingEnvironment(); // GO TO SCHEDULER
 
