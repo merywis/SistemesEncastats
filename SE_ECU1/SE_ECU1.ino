@@ -121,19 +121,15 @@ void isrCAN()
 
   if (CAN.rxInterrupt())
   {
-    //hib.ledToggle(RX_LED); // for debugging
-
     CAN.readRxMsg();
     switch (CAN.getRxMsgId())
     {
       case CAN_ID_PRINT_TEMP:
-        Serial.println("isr caso temp");
         CAN.getRxMsgData((byte*) &rxMessageTemp);
         so.setFlag(fCANPrintEvent, maskRxPrintEvent);
         break;
 
       case CAN_ID_ALARM:
-        Serial.println("isr caso alarma");
         CAN.getRxMsgData((byte*) &rxNumRoom);
         so.setFlag(fAlarmEvent, maskAlarmEvent);
         break;
@@ -152,6 +148,7 @@ void isrCAN()
 /******************************************
   TASKS declarations and implementations
 *******************************************/
+
 /* tarea encargada de imprimir las temp interiores de cada hab o la temp ext */
 void PrintTemp()
 {
@@ -220,6 +217,7 @@ void PrintTemp()
         hib.lcdClear();
         hib.lcdSetCursorFirstLine();
 
+/* aquí podem fer un bucle?????????????? */
         dtostrf(arrayTempInt[0], 1, 2, floatBuffer);
         sprintf(charBuff, "1:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
@@ -227,8 +225,6 @@ void PrintTemp()
         dtostrf(arrayTempInt[1], 1, 2, floatBuffer);
         sprintf(charBuff, "2:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
-        Serial.print("arrayTempInt[3]: ");
-        Serial.println(arrayTempInt[1]);
         hib.lcdSetCursorSecondLine();
 
         dtostrf(arrayTempInt[2], 1, 2, floatBuffer);
@@ -305,6 +301,7 @@ void TimetableHeating()
     //CAN
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
+    
     so.signalSem(sCanCtrl);
 
     nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; 
@@ -321,7 +318,7 @@ void ShareTime()
   while (true) {
     so.waitMBox(mbLight, (byte**) &rxLight);
 
-    so.waitSem(sTime);
+    so.waitSem(c);
 
     momentDay = *rxLight;
 
@@ -347,6 +344,7 @@ void Alarm()
 
     // Clear the maskAlarmEvent bits of flag fAlarmEvent to not process the same event twice
     so.clearFlag(fAlarmEvent, maskAlarmEvent);
+    m
     auxNumRoom = rxNumRoom;
 
     //Simulate alarm

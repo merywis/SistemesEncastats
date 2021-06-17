@@ -156,7 +156,6 @@ typedef structTempInfo typeTempInfo;
 /** Hooks *********************************************************************/
 /******************************************************************************/
 
-
 /*****************
   KEYPAD hook
 ******************/
@@ -166,7 +165,6 @@ void keyHook(uint8_t newKey)
 
   so.setFlag(fKeyEvent, maskKeyEvent);
 }
-
 
 /*****************
   ADCISR
@@ -188,7 +186,6 @@ void timer5Hook ()
 {
   so.updateTime(); // Call SO to update time (tick) and manage tasks
 }
-
 
 /******************************************************************************/
 /** ISR *********************************************************************/
@@ -292,7 +289,7 @@ void State()
 
     so.waitSem(sDatosTemp);
 
-    //Actualizar el valor de los los límites en cada hab.
+    //Actualizar el valor de los los límites en cada habitación.
     for (int i = 0; i < 4; i++) {
       state.datosRoom[i].tempMaxDay = arrayLimites[i].maxDay;
       state.datosRoom[i].tempMinDay = arrayLimites[i].minDay;
@@ -588,13 +585,9 @@ void InsertComandos()
   char moment;
   uint8_t turno = 0;
   uint8_t i = 0;
+  
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
-
-
-  unsigned long tiempo1 = 0;
-  unsigned long tiempo2 = 0;
-  unsigned long tiempoSegundos = 0;
 
   while (true)
   {
@@ -643,11 +636,9 @@ void InsertComandos()
               i = 0;
               turno++;
             }
-
           } else {
             turno = 0;
           }
-
           break;
 
         case 3:
@@ -677,10 +668,9 @@ void InsertComandos()
 
           } else {
             turno = 0;
-            //Serial.println("Error en la Temperatura Minima Seleccion de Habitación");
           }
-
           break;
+          
         case 5:
           if (c == ' ') { //El espacio
             turno++;
@@ -705,14 +695,9 @@ void InsertComandos()
               arrayLimites[room - 1].minNight = tempMin;
             }
             so.signalSem(sDatosTemp);
-
-            //Serial.println("FIN Momento del Dia Seleccionada Correctamente: ");
-            //Serial.println(c);
           } else {
             turno = 0;
-            // Serial.println("Error en el Momento del dia");
           }
-
           break;
 
         default:
