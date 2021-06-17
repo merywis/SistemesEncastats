@@ -172,14 +172,16 @@ void PrintTemp()
     so.clearFlag(fCANPrintEvent, maskRxPrintEvent);
     auxRxMessageTemp = rxMessageTemp;
 
-    so.waitSem(sTime);
 
-    auxMomentDay = momentDay;
 
-    so.signalSem(sTime);
-    
     //Distinguimos qué tipo de Tª hay q imprimir:
     if (auxRxMessageTemp.typeInfo == 8) { //tempExt
+      so.waitSem(sTime);
+
+      auxMomentDay = momentDay;
+
+      so.signalSem(sTime);
+
       so.waitSem(sTempExt);
 
       auxTempExt = TempExt;
@@ -212,12 +214,12 @@ void PrintTemp()
 
       if (auxRxMessageTemp.numRoom == 3) {
         // The LCD is a critial region itself (shared between PrintTemp and Alarm)
+
         so.waitSem(sLCD);
 
         hib.lcdClear();
         hib.lcdSetCursorFirstLine();
 
-/* aquí podem fer un bucle?????????????? */
         dtostrf(arrayTempInt[0], 1, 2, floatBuffer);
         sprintf(charBuff, "1:%s ", floatBuffer);
         hib.lcdPrint(charBuff);
@@ -266,7 +268,7 @@ void DetectTempExt()
 
     so.signalSem(sCanCtrl);
 
-    nextActivationTick = nextActivationTick +  PERIOD_TASK_DETECT_TEMP_EXT; 
+    nextActivationTick = nextActivationTick +  PERIOD_TASK_DETECT_TEMP_EXT;
     so.delayUntilTick(nextActivationTick);
   }
 
@@ -301,10 +303,10 @@ void TimetableHeating()
     //CAN
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
-    
+
     so.signalSem(sCanCtrl);
 
-    nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING; 
+    nextActivationTick = nextActivationTick +  PERIOD_TASK_TIMETABLE_HEATING;
     so.delayUntilTick(nextActivationTick);
   }
 
@@ -318,7 +320,7 @@ void ShareTime()
   while (true) {
     so.waitMBox(mbLight, (byte**) &rxLight);
 
-    so.waitSem(c);
+    so.waitSem(sTime);
 
     momentDay = *rxLight;
 
@@ -344,23 +346,24 @@ void Alarm()
 
     // Clear the maskAlarmEvent bits of flag fAlarmEvent to not process the same event twice
     so.clearFlag(fAlarmEvent, maskAlarmEvent);
-    m
-    auxNumRoom = rxNumRoom;
 
+    auxNumRoom = rxNumRoom;
     //Simulate alarm
-    hib.ledToggle(auxNumRoom - 1);
+    hib.ledToggle(auxNumRoom);
 
     for (int i = 0; i < TAM; i++) {
       c = Notes[i];
       playNote(c, 4, 500);
     }
-    
+
     so.waitSem(sLCD);
     hib.lcdClear();
-    sprintf(charBuff, "ALARM in room: %d ", auxNumRoom);
+    sprintf(charBuff, "ALARM in room: %d ", auxNumRoom + 1);
     hib.lcdPrint(charBuff);
-    so.signalSem(sLCD);
+    //delay(700);
     //hib.lcdClear();
+    so.signalSem(sLCD);
+
   }
 }
 
@@ -444,7 +447,7 @@ void loop() {
 
     //Set up timer 5 so that the SO can regain the CPU every tick
     hib.setUpTimer5(TIMER_TICKS_FOR_125ms, (tClkPreFactType) TIMER_PSCALER_FOR_125ms, timer5Hook);
-    
+
     // Start mutltasking (program does not return to 'main' from hereon)
     so.enterMultiTaskingEnvironment(); // GO TO SCHEDULER
 

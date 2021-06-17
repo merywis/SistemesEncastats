@@ -490,7 +490,6 @@ void KeyDetector()
 
         MessageTemp[i].typeInfo = 7;
         MessageTemp[i].numRoom = i;
-
         so.waitSem(sTempInt);
 
         MessageTemp[i].tempInt = tempIntRoom[i];
@@ -502,6 +501,8 @@ void KeyDetector()
           CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp[i]);
 
         so.signalSem(sCanCtrl);
+        
+        delay(50);
       }
     }
   }
