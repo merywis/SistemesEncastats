@@ -246,7 +246,9 @@ void State()
   typeTempInfo infoSimulateTemp;
   typeGoal auxGoal;
   typeLimitesRoom auxStructLimites[NUM_ROOM];
-
+  
+  char charBuff[20];  
+  char floatBuffer[6];
   uint8_t numRoom;
   float temp1, temp2;
   int j, x;
@@ -352,28 +354,56 @@ void State()
     x = 1;
     term.move(6, x);
     for (int i = 0; i < NUM_ROOM; i++) {
-      term.print("Room ");
-      term.print(i + 1);
+      
+      sprintf(charBuff, "Room: %d", (i+1));
+      term.print(charBuff);
       term.move(7, x);
-      term.print("Indoor Temp: ");
+      
+      sprintf(charBuff, "Indoor Temp:");
+      term.print(charBuff);
       term.move(8, x);
-      term.print(state.datosRoom[i].tempInt);
+      
+      dtostrf(state.datosRoom[i].tempInt, 1, 2, floatBuffer);
+      sprintf(charBuff, "%s", floatBuffer);
+      term.print(charBuff);
       term.move(9, x);
-      term.print("Temp Goal:  ");
+      
+      sprintf(charBuff, "Temp Goal:");
+      term.print(charBuff);
       term.move(10, x);
-      term.print(state.datosRoom[i].tempGoal);
+      
+      dtostrf(state.datosRoom[i].tempGoal, 1, 2, floatBuffer);
+      sprintf(charBuff, "%s", floatBuffer);
+      term.print(charBuff);
       term.move(11, x);
-      term.print("Day limits:  ");
+      
+      sprintf(charBuff, "Day limits:");
+      term.print(charBuff);
       term.move(12, x);
-      term.print(state.datosRoom[i].tempMinDay);
+      
+      dtostrf(state.datosRoom[i].tempMinDay, 1, 2, floatBuffer);
+      sprintf(charBuff, "%s", floatBuffer);
+      term.print(charBuff);
       term.move(13, x);
-      term.print(state.datosRoom[i].tempMaxDay);
+      
+      dtostrf(state.datosRoom[i].tempMaxDay, 1, 2, floatBuffer);
+      sprintf(charBuff, "%s", floatBuffer);
+      term.print(charBuff);
       term.move(14, x);
-      term.print("Night limits:  ");
+
+      sprintf(charBuff, "Night limits:");
+      term.print(charBuff);
       term.move(15, x);
-      term.print(state.datosRoom[i].tempMinNight);
+      
+      dtostrf(state.datosRoom[i].tempMinNight, 1, 2, floatBuffer);
+      sprintf(charBuff, "%s", floatBuffer);
+      term.print(charBuff);
       term.move(16, x);
-      term.print(state.datosRoom[i].tempMaxNight);
+      
+      dtostrf(state.datosRoom[i].tempMaxNight, 1, 2, floatBuffer);
+      sprintf(charBuff, "%s", floatBuffer);
+      term.print(charBuff);
+      
       x = x + 25;
       term.move(6, x);
     }
