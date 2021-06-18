@@ -395,6 +395,8 @@ void SimulateTempInt()
   int j;
 
   while (true) {
+    
+    // Wait until receiving the new infoSimulateTemp from State
     so.waitMBox(mbInfoTemp, (byte**) &rxStructInfoMessage);
     infoSimulateTemp = *rxStructInfoMessage;
 

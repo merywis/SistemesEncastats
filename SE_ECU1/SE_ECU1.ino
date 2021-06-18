@@ -25,15 +25,14 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define CAN_ID_LIGHT 3
 #define CAN_ID_ALARM 4
 
-#define PRIO_TASK_PrintTemp 2
 #define PRIO_TASK_DETECT_TEMP_EXT 1
 #define PRIO_TASK_TIMETABLE_HEATING 1
+#define PRIO_TASK_PrintTemp 2
 #define PRIO_TASK_SHARE_TIME 2
 #define PRIO_TASK_ALARM 2
 
 #define PERIOD_TASK_DETECT_TEMP_EXT 1
 #define PERIOD_TASK_TIMETABLE_HEATING 1
-
 
 #define DO 1
 #define RE 3
@@ -62,8 +61,8 @@ Flag fAlarmEvent;
 
 
 // Masks
-const unsigned char maskRxPrintEvent = 0x01; // represents reception of sensor via CAN
-const unsigned char maskAlarmEvent = 0x01; // represents reception of sensor via CAN
+const unsigned char maskRxPrintEvent = 0x01; // represents reception of a print event via CAN
+const unsigned char maskAlarmEvent = 0x01; // represents reception alarm via CAN
 
 /*********
   Declaration of semaphores
@@ -89,8 +88,8 @@ struct structMessageTemp
   float tempInt;
 };
 typedef structMessageTemp typeMessageTemp;
-
 typeMessageTemp rxMessageTemp;
+
 
 /******************************************************************************/
 /** ISR *********************************************************************/
@@ -112,7 +111,6 @@ void timer5Hook ()
 
 void isrCAN()
 {
-  const uint8_t RX_LED = 4;
   char auxSREG;
 
   // Save the AVR Status Register by software
@@ -150,17 +148,15 @@ void isrCAN()
   TASKS declarations and implementations
 *******************************************/
 
-/* tarea encargada de imprimir las temp interiores de cada hab o la temp ext */
+/* tarea encargada de imprimir las temperaturas interiores de cada habitación
+  o la temperatura exterior de la casa junto con el momento del día */
 void PrintTemp()
 {
   typeMessageTemp auxRxMessageTemp;
 
   float auxTempExt;
   boolean auxMomentDay;
-  String momentOfDay;
-  char momDay[5];
   float arrayTempInt[NUM_ROOM];
-
   char charBuff[10];
   char floatBuffer[6];
 
@@ -169,20 +165,23 @@ void PrintTemp()
     // indicated by the bits of maskRxPrintEvent are set to '1'
     so.waitFlag(fCANPrintEvent, maskRxPrintEvent);
 
-    // Clear the maskRxPrintEvent bits of flag fCANPrintEvent to not process the same event twice
+    // Clear the mask bits of flag fCANPrintEvent to not process the same event twice
     so.clearFlag(fCANPrintEvent, maskRxPrintEvent);
+
     auxRxMessageTemp = rxMessageTemp;
 
+    //Distinguimos qué tipo de temperatura hay que imprimir:
 
+    if (auxRxMessageTemp.typeInfo == 8) { //caso temperatura exterior
 
-    //Distinguimos qué tipo de Tª hay q imprimir:
-    if (auxRxMessageTemp.typeInfo == 8) { //tempExt
+      // Read momentDay (shared with the task ShareTime)
       so.waitSem(sTime);
 
       auxMomentDay = momentDay;
 
       so.signalSem(sTime);
 
+      // Read TempExt (shared with the task DetectTempExt)
       so.waitSem(sTempExt);
 
       auxTempExt = TempExt;
@@ -194,14 +193,19 @@ void PrintTemp()
 
       hib.lcdClear();
       hib.lcdSetCursorFirstLine();
-      if (auxMomentDay) {
+
+      if (auxMomentDay) { //momento del día es día
+
         sprintf(charBuff, "%s", "day");
-      } else {
+
+      } else {//momento del día es noche
+
         sprintf(charBuff, "%s", "night");
       }
-      hib.lcdPrint(charBuff);
 
+      hib.lcdPrint(charBuff);
       hib.lcdSetCursorSecondLine();
+
       dtostrf(auxTempExt, 1, 2, floatBuffer);
       sprintf(charBuff, "Temp Ext: %s    ", floatBuffer);
       hib.lcdPrint(charBuff);
@@ -209,13 +213,14 @@ void PrintTemp()
       so.signalSem(sLCD);
 
 
-    } else if (auxRxMessageTemp.typeInfo == 7) {
+    } else if (auxRxMessageTemp.typeInfo == 7) { //caso temperaturas interiores
 
       arrayTempInt[auxRxMessageTemp.numRoom] = auxRxMessageTemp.tempInt;
 
-      if (auxRxMessageTemp.numRoom == 3) {
-        // The LCD is a critial region itself (shared between PrintTemp and Alarm)
+      if (auxRxMessageTemp.numRoom == 3) { //Si entramos en este if, es que hemos
+        //recibido las 4 tramas que contienen las temperaturas de las 4 habitaciones
 
+        // The LCD is a critial region itself (shared between PrintTemp and Alarm)
         so.waitSem(sLCD);
 
         hib.lcdClear();
@@ -245,10 +250,11 @@ void PrintTemp()
   }
 }
 
-/* tarea encargada de obtener la temperatura exterior mediante un sensor */
+/* tarea encargada de obtener la temperatura exterior mediante el sensor de Tª izquierdo */
 void DetectTempExt()
 {
   float celsius;
+
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
 
@@ -256,12 +262,14 @@ void DetectTempExt()
   {
     celsius = hib.temReadCelsius(hib.LEFT_TEM_SENS);
 
+    // Write TempExt (shared with PrintTemp)
     so.waitSem(sTempExt);
 
     TempExt = celsius;
 
     so.signalSem(sTempExt);
 
+    //Send celsius using CAN
     so.waitSem(sCanCtrl);
 
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
@@ -275,7 +283,7 @@ void DetectTempExt()
 
 }
 
-/* tarea encargada de obtener el momento del día según un sensor de luz */
+/* tarea encargada de obtener el momento del día según el sensor de luz izquierdo */
 void TimetableHeating()
 {
   unsigned long nextActivationTick;
@@ -287,7 +295,7 @@ void TimetableHeating()
   while (true)
   {
     // Sample left-handed LDR (Light-Dependant Resistor) sensor
-    ldrAdcValue = hib.ldrReadAdc(hib.LEFT_LDR_SENS); //Aquí mos retorna el valor en el rang adc 0-1024
+    ldrAdcValue = hib.ldrReadAdc(hib.LEFT_LDR_SENS); //ldrAdcValue es un valor en el rango adc: [0-1024]
 
     //ara ho haurem de mapear en els valors que necessitem.
     if (ldrAdcValue < 512) {
@@ -296,12 +304,12 @@ void TimetableHeating()
       light = true;
     }
 
-    //Se lo enviamos a ShareTime
+    //Se lo enviamos a la tarea ShareTime
     so.signalMBox(mbLight, (byte*) &light);
 
+    //Send light using CAN
     so.waitSem(sCanCtrl);
 
-    //CAN
     if (CAN.checkPendingTransmission() != CAN_TXPENDING)
       CAN.sendMsgBufNonBlocking(CAN_ID_LIGHT, CAN_EXTID, sizeof(boolean), (INT8U *) &light);
 
@@ -313,14 +321,16 @@ void TimetableHeating()
 
 }
 
-/* tarea que comparte el momento del día con la tarea PrintTemp */
+/* tarea que comparte la variable del momento del día con la tarea PrintTemp */
 void ShareTime()
 {
   boolean * rxLight;
 
   while (true) {
+    // Wait until receiving the new light value from TimetableHeating
     so.waitMBox(mbLight, (byte**) &rxLight);
 
+    // Write momentDay (shared with the task PrintTemp)
     so.waitSem(sTime);
 
     momentDay = *rxLight;
@@ -330,7 +340,7 @@ void ShareTime()
   }
 }
 
-/* tarea que activa la alarma si supera una habitacion la temp limite */
+/* tarea que activa la alarma de que una habitación ha superado alguno de sus límites */
 void Alarm()
 {
   uint8_t  auxNumRoom;
@@ -345,24 +355,28 @@ void Alarm()
     // indicated by the bits of maskAlarmEvent are set to '1'
     so.waitFlag(fAlarmEvent, maskAlarmEvent);
 
-    // Clear the maskAlarmEvent bits of flag fAlarmEvent to not process the same event twice
+    // Clear the mask bits of flag fAlarmEvent to not process the same event twice
     so.clearFlag(fAlarmEvent, maskAlarmEvent);
 
     auxNumRoom = rxNumRoom;
-    //Simulate alarm
+
+    //Simulate alarm:
+    //Lights
     hib.ledToggle(auxNumRoom);
 
+    //Melody alarm
     for (int i = 0; i < TAM; i++) {
       c = Notes[i];
       playNote(c, 4, 500);
     }
 
+    // The LCD is a critial region itself (shared between PrintTemp and Alarm)
     so.waitSem(sLCD);
+
     hib.lcdClear();
     sprintf(charBuff, "ALARM in room: %d ", auxNumRoom + 1);
     hib.lcdPrint(charBuff);
-    //delay(700);
-    //hib.lcdClear();
+
     so.signalSem(sLCD);
 
   }
@@ -370,12 +384,14 @@ void Alarm()
 
 
 void playNote(unsigned char note, unsigned char octave, unsigned int duration) {
-  float freq;
-  float potencia;
-  potencia = pow(2, ((((float)note) - 10.0) / 12.0 + ((float) octave) - 4.0));
-  freq = 440 * potencia;
-  hib.buzzPlay(duration, freq);
-
+  
+    float freq;
+    float potencia;
+    
+    potencia = pow(2, ((((float)note) - 10.0) / 12.0 + ((float) octave) - 4.0));
+    freq = 440 * potencia;
+    
+    hib.buzzPlay(duration, freq);
 
 }
 
@@ -387,8 +403,6 @@ void playNote(unsigned char note, unsigned char octave, unsigned int duration) {
 void setup() {
   //Init
   Serial.begin(115200); // SPEED
-
-  //Init terminal
 
   //Init hib
   hib.begin();
@@ -416,10 +430,6 @@ void setup() {
 
 
 void loop() {
-  // TX consts and vars
-
-  // Rx vars
-
 
   while (true) {
 
