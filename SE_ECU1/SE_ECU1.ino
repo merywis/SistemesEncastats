@@ -18,6 +18,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 /******************************************************************************/
 /** DEFINE ********************************************************************/
 /******************************************************************************/
+#define NUM_ROOM 4
 
 #define CAN_ID_PRINT_TEMP 1
 #define CAN_ID_TEMP_EXT 2
@@ -158,7 +159,7 @@ void PrintTemp()
   boolean auxMomentDay;
   String momentOfDay;
   char momDay[5];
-  float arrayTempInt[4];
+  float arrayTempInt[NUM_ROOM];
 
   char charBuff[10];
   char floatBuffer[6];

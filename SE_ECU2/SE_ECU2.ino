@@ -24,8 +24,8 @@ MCP_CAN CAN(SPI_CS_PIN);
 
 #define PRIO_TASK_STATE 1
 #define PRIO_TASK_SIMULATE_TEMP_INT 2
-#define PRIO_TASK_KeyDetector 3
 #define PRIO_TASK_ShareAdcValue 2
+#define PRIO_TASK_KeyDetector 3
 #define PRIO_TASK_InsertTemp 3
 #define PRIO_TASK_InsertComandos 3
 #define PRIO_TASK_SHARE 3
@@ -38,6 +38,7 @@ MCP_CAN CAN(SPI_CS_PIN);
 #define PERIOD_TASK_STATE 5
 #define PERIOD_TASK_INSERTCOMANDOS 1
 
+
 /******************************************************************************/
 /** Global const and variables ************************************************/
 /******************************************************************************/
@@ -49,13 +50,14 @@ volatile uint16_t adcValue = 0; // critical region beetween adcHook and ShareAdc
 // calculated upon adcValue
 // shared between ShareAdcValue (writes) and InsertTemp (reads)
 volatile float sampledAdc = 0.0;
-volatile uint8_t key = 255;
 
+volatile uint8_t key = 255;
 volatile float rxTemp = 0.0;
 volatile boolean rxTime = false;
 
 volatile float TempExt = 24.0;
 volatile boolean MomentDay = false;
+
 
 /********************************
   Declaration of flags and masks
@@ -64,14 +66,13 @@ volatile boolean MomentDay = false;
 // flag (set of bits) for external events
 Flag fKeyEvent;
 Flag fAdcEvent;
+Flag fCANEvent;
 
 // Masks
-const unsigned char maskKeyEvent = 0x01; // represents new adc value adquired
+const unsigned char maskKeyEvent = 0x01; // represents new key value adquired
 const unsigned char maskAdcEvent = 0x01; // represents new adc value adquired
-
-Flag fCANEvent;
-const unsigned char maskRxTempExtEvent = 0x01; // represents new adc value adquired
-const unsigned char maskRxTimeEvent = 0x02; // represents new adc value adquired
+const unsigned char maskRxTempExtEvent = 0x01; // represents new tempExt value adquired
+const unsigned char maskRxTimeEvent = 0x02; // represents new time value adquired
 
 
 /*********
@@ -105,13 +106,15 @@ struct structRoom
 };
 typedef structRoom typeRoom;
 
+
 struct structState
 {
   float tempExt;
   boolean momentDay = true;
-  typeRoom datosRoom[4];
+  typeRoom datosRoom[NUM_ROOM];
 };
 typedef structState typeState;
+
 
 struct structGoal
 {
@@ -119,20 +122,21 @@ struct structGoal
   float tempGoal = 21.00;
 };
 typedef structGoal typeGoal;
-
 typeGoal Goal;
 
+
 struct structLimitesRoom {
-  float maxDay = 30.0; // Number of edition
-  float maxNight = 28.9; // Number of edition
-  float minDay = 15.0; // Number of edition
-  float minNight = 17.0; // Number of edition
+  float maxDay = 30.0; 
+  float maxNight = 28.9; 
+  float minDay = 15.0; 
+  float minNight = 17.0; 
 };
 typedef structLimitesRoom typeLimitesRoom;
+typeLimitesRoom arrayLimites[NUM_ROOM];
 
-typeLimitesRoom arrayLimites[4];
 
 float tempIntRoom[] = {26.0, 26.0, 26.0, 26.0};
+
 
 struct structMessageTemp
 {
@@ -141,6 +145,7 @@ struct structMessageTemp
   float tempInt;
 };
 typedef structMessageTemp typeMessageTemp;
+
 
 struct structTempInfo
 {
@@ -161,31 +166,31 @@ typedef structTempInfo typeTempInfo;
 ******************/
 void keyHook(uint8_t newKey)
 {
-  key = newKey; //guardar el valor de la nueva tecla
+  key = newKey; //guardar el valor de la nueva tecla pulsada
 
   so.setFlag(fKeyEvent, maskKeyEvent);
 }
 
+
 /*****************
   ADCISR
 ******************/
-
 void adcHook(uint16_t newAdcAdquiredValue)
 {
-  adcValue = newAdcAdquiredValue; //guardar el valor del nuevo ADC
+  adcValue = newAdcAdquiredValue; //guardar el nuevo valor del ADC
 
   so.setFlag(fAdcEvent, maskAdcEvent);
 }
 
+
 /*****************
   TICKISR
 ******************/
-
-// Hook FOR TICKISR
 void timer5Hook ()
 {
   so.updateTime(); // Call SO to update time (tick) and manage tasks
 }
+
 
 /******************************************************************************/
 /** ISR *********************************************************************/
@@ -194,10 +199,8 @@ void timer5Hook ()
 /*****************
   CANISR
 ******************/
-
 void isrCAN()
 {
-  const uint8_t RX_LED = 4;
   char auxSREG;
 
   // Save the AVR Status Register by software
@@ -239,11 +242,10 @@ void isrCAN()
 /* La tarea State es la tarea controladora del sistema */
 void State()
 {
-
   typeState state;
   typeTempInfo infoSimulateTemp;
   typeGoal auxGoal;
-  typeLimitesRoom auxStructLimites[4];
+  typeLimitesRoom auxStructLimites[NUM_ROOM];
 
   uint8_t numRoom;
   float temp1, temp2;
@@ -251,7 +253,6 @@ void State()
 
   unsigned long nextActivationTick;
   nextActivationTick = so.getTick();
-
 
   while (true)
   {
@@ -269,8 +270,9 @@ void State()
 
     so.signalSem(sShare);
 
-    // Read TempExt (shared with the task Share)
+    // Read Goal (shared with the task InsertTemp)
     so.waitSem(sDatosTemp);
+    
     auxGoal = Goal;
 
     so.signalSem(sDatosTemp);
@@ -278,19 +280,21 @@ void State()
     //Actualizar el valor
     state.datosRoom[auxGoal.numRoom].tempGoal = auxGoal.tempGoal;
 
+    // Read tempIntRoom[] (shared with the task SimulateTempInt)
     so.waitSem(sTempInt);
 
-    //Actualizar el valor de la temp interior de cada hab.
-    for (int i = 0; i < 4; i++) {
+    //Actualizar el valor de la temperatura interior de cada habitación
+    for (int i = 0; i < NUM_ROOM; i++) {
       state.datosRoom[i].tempInt = tempIntRoom[i];
     }
 
     so.signalSem(sTempInt);
 
+    // Read arrayLimites[] (shared with the task InsertComandos)
     so.waitSem(sDatosTemp);
 
-    //Actualizar el valor de los los límites en cada habitación.
-    for (int i = 0; i < 4; i++) {
+    //Actualizar el valor de los los límites en cada habitación
+    for (int i = 0; i < NUM_ROOM; i++) {
       state.datosRoom[i].tempMaxDay = arrayLimites[i].maxDay;
       state.datosRoom[i].tempMinDay = arrayLimites[i].minDay;
       state.datosRoom[i].tempMaxNight = arrayLimites[i].maxNight;
@@ -299,10 +303,13 @@ void State()
 
     so.signalSem(sDatosTemp);
 
-    //Comprobar si las temp interiores han superado los límites en cada hab.
+    //Comprobar si las temperaturas interiores han superado los límites en cada habitación
     for (int i = 0; i < 4; i++) {
-      if (state.momentDay) { //caso límites día
+      
+      if (state.momentDay) { //caso límites durante el día
         if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxDay || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinDay) {
+          
+          //Caso de alarma, por tanto, transmitimos el número de la habitación afectada via CAN
           so.waitSem(sCanCtrl);
           
           if (CAN.checkPendingTransmission() != CAN_TXPENDING)
@@ -311,9 +318,10 @@ void State()
           so.signalSem(sCanCtrl);
 
         }
-      } else {
+      } else { //caso límites durante la noche
         if (state.datosRoom[i].tempInt > state.datosRoom[i].tempMaxNight || state.datosRoom[i].tempInt < state.datosRoom[i].tempMinNight) {
-          
+
+          //Caso de alarma, por tanto, transmitimos el número de la habitación afectada via CAN
           so.waitSem(sCanCtrl);
 
           if (CAN.checkPendingTransmission() != CAN_TXPENDING)
@@ -324,13 +332,13 @@ void State()
       }
     }
 
-    //Cálculo de la Actuación en cada habitación
-    for (int i = 0; i < 4; i++) {
+    //Cálculo de la actuación en cada habitación
+    for (int i = 0; i < NUM_ROOM; i++) {
       state.datosRoom[i].actuacion = (state.datosRoom[i].tempGoal - 0.2 * state.tempExt - 0.2 * state.datosRoom[i].tempInt) / 0.6;
     }
 
-    //Transmitir Actuación
-    for (int i = 0; i < 4; i++) {
+    //Transmitir Actuación hacia la tarea SimulateTempInt
+    for (int i = 0; i < NUM_ROOM; i++) {
 
       infoSimulateTemp.numRoom = i;
       infoSimulateTemp.tempExt = state.tempExt;
@@ -340,7 +348,7 @@ void State()
       so.signalMBox(mbInfoTemp, (byte*) &infoSimulateTemp);
     }
 
-    //Imprimir por la terminal la información del sistema
+    //Imprimir por el terminal la información del sistema
     x = 1;
     term.move(6, x);
     for (int i = 0; i < NUM_ROOM; i++) {
@@ -375,12 +383,14 @@ void State()
   }
 }
 
-/* Tarea encargada de simular la temp interior de una habitación como si fuera un sensor */
+
+/* Tarea que simula la temperatura interior de una habitación como si fuera un sensor */
 void SimulateTempInt()
 {
 
   typeTempInfo infoSimulateTemp;
   typeTempInfo * rxStructInfoMessage;
+  
   float newTempInt;
   int j;
 
@@ -391,7 +401,7 @@ void SimulateTempInt()
     //Formula de la nueva Tª interior
     newTempInt = 0.5 * infoSimulateTemp.actuacion + 0.25 * infoSimulateTemp.tempInt + 0.25 * infoSimulateTemp.tempExt;
 
-    //Actualizamos el valor
+    // Write tempIntRoom[] (shared with the task State and KeyDetector)
     so.waitSem(sTempInt);
 
     tempIntRoom[infoSimulateTemp.numRoom] = newTempInt;
@@ -400,6 +410,7 @@ void SimulateTempInt()
   }
 
 }
+
 
 /* Tarea que recibe los mensajes del CAN y los guarda en variables globales*/
 void Share() {
@@ -420,27 +431,30 @@ void Share() {
 
     // Clear the mask bits of flag fCANEvent to not process the same event twice
     so.clearFlag(fCANEvent, mask);
-    // distinguish whether the event has been alarm or not alarm
+    
+    // distinguish whether the event has been a temperature or the time
     switch (flagValue)
     {
       case maskRxTempExtEvent:
 
-        // Read rxTemp
+        // Update TempExt value (shared with the task State)
         so.waitSem(sShare);
 
         TempExt = rxTemp;
 
         so.signalSem(sShare);
+        
         break;
 
       case maskRxTimeEvent:
 
-        // Read rxTime
+        // Update MomentDay value (shared with the task State)
         so.waitSem(sShare);
 
         MomentDay = rxTime;
 
         so.signalSem(sShare);
+        
         break;
 
       default:
@@ -450,12 +464,13 @@ void Share() {
   }
 }
 
-/* Detecta la tecla pulsada y realiza la acción correspondiente a la tecla */
+
+/* Detecta la tecla pulsada y realiza la acción correspondiente */
 void KeyDetector()
 {
   
-  typeMessageTemp MessageTemp[4];
-  uint8_t auxKey;
+  typeMessageTemp MessageTemp[NUM_ROOM];
+  uint8_t numRoom;
   
   while (1)
   {
@@ -466,30 +481,38 @@ void KeyDetector()
     // Clear the flag fKeyEvent to not process the same event twice
     so.clearFlag(fKeyEvent, maskKeyEvent);
     
-    //distinguimos los diferentes posibles casos:
+    //distinguimos entre 3 posibles casos:
     if (key == 0 || key == 1 || key == 2 || key == 3) {
-      //mandamos la tecla hacia InsertTemp que se corresponde con el número de habitación del que el usuario quiere cambiar la tempGoal
-      auxKey = key;
-      so.signalMBox(mbNumRoom, (byte*) &auxKey);
+      //mandamos la tecla hacia la tarea InsertTemp, que se corresponde con el  
+      //número de la habitación dónde el usuario quiere cambiar la tempGoal
+      
+      numRoom = key;
+      so.signalMBox(mbNumRoom, (byte*) &numRoom);
 
     } else if (key == 8) {
-      //Caso Tª exterior-> enviar valor key a través de CAN
-      //Rellenamos el campo necesario en el struct MessageTemp1 para indicar que lo que se desea imprimir es la Tª ext
+      //Caso imprimir Tª exterior: enviar valor key a través del CAN
+      //Rellenamos el campo necesario en el array MessageTemp para indicar que 
+      //lo que se desea imprimir es la temperatura exterior
+      
       MessageTemp[0].typeInfo = 8;
 
       so.waitSem(sCanCtrl);
 
       if (CAN.checkPendingTransmission() != CAN_TXPENDING)
         CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp[0]);
+      
       so.signalSem(sCanCtrl);
 
     } else if (key == 7) {
-      //Aquí deseamos imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe en un único "envío", vamos a enviar
-      //un mensaje por cada habitación
-      for (int i = 0; i < 4; i++) {
+      //Caso imprimir la Tª interior de las 4 habitaciones. Debido a que no cabe 
+      //en un único mensaje, vamos a dividirlo en una trama por cada habitación
+     
+      for (int i = 0; i < NUM_ROOM; i++) {
 
         MessageTemp[i].typeInfo = 7;
         MessageTemp[i].numRoom = i;
+
+        // Read tempIntRoom[] (shared with the task SimulateTempInt)
         so.waitSem(sTempInt);
 
         MessageTemp[i].tempInt = tempIntRoom[i];
@@ -497,40 +520,40 @@ void KeyDetector()
         so.signalSem(sTempInt);
 
         so.waitSem(sCanCtrl);
+        
         if (CAN.checkPendingTransmission() != CAN_TXPENDING)
           CAN.sendMsgBufNonBlocking(CAN_ID_PRINT_TEMP, CAN_EXTID, sizeof(typeMessageTemp), (INT8U *) &MessageTemp[i]);
 
         so.signalSem(sCanCtrl);
         
-        delay(50);
+        delay(50); //hacemos un delay para que las 4 tramas puedan llegar a la otra ECU
       }
     }
   }
 }
 
-/* tarea encarga de compartir con la tarea state la temp deseada de una habitación */
+/* tarea encarga de compartir con la tarea State la temperatura deseada en una habitación */
 void InsertTemp() {
 
   uint8_t auxNumRoom;
   uint8_t * rxNumRoomMessage;
-
   float auxSampledAdc;
 
   while (true) {
 
-    // Wait until receiving the new state from KeyDetector
+    // Wait until receiving the new numRoom from KeyDetector
     so.waitMBox(mbNumRoom, (byte**) &rxNumRoomMessage);
 
     auxNumRoom = *rxNumRoomMessage; //posibles valores son 0,1,2,3.
 
-    // Read adcValue (shared with ShareAdcValue)
+    // Read sampledAdc (shared with ShareAdcValue)
     so.waitSem(sDatosTemp);
 
     auxSampledAdc = sampledAdc;
 
     so.signalSem(sDatosTemp);
 
-
+    // Write Goal (shared with State)
     so.waitSem(sDatosTemp);
 
     Goal.numRoom = auxNumRoom;
@@ -541,34 +564,30 @@ void InsertTemp() {
 }
 
 
-/* tarea encargada de obtener el valor del ADC, mapearlo y compartirlo a la tarea Insert Temp */
+/* tarea encargada de obtener el valor del ADC, mapearlo y compartirlo con la tarea InsertTemp */
 void ShareAdcValue() {
-
-  char str[16];
-  char floatBuffer[6];
-  char charBuff[10];
 
   uint16_t auxAdcValue;
   float auxSampledAdc;
 
   while (1)
   {
-    // Wait until any of the bits of the flag fExtEvent
+    // Wait until any of the bits of the flag fAdcEvent
     // indicated by the bits of maskAdcEvent are set to '1'
     so.waitFlag(fAdcEvent, maskAdcEvent);
 
-    // Clear the flag fExtEvent to not process the same event twice
+    // Clear the flag fAdcEvent to not process the same event twice
     so.clearFlag(fAdcEvent, maskAdcEvent);
 
     auxAdcValue = adcValue;
-    // Get value and map it in range [-10, 40] -> mapeam es valor q estava entre (0,1023) a [-10, 40]
-    //1023 * x = 50 -> x = 0,04887586
+    
+    // Map the auxAdcValue in range [-10, 40] (temperature)
     auxSampledAdc = (((float) auxAdcValue) * 0.04887585) - 10;
 
-
+    // Write sampledAdc (shared with InsertTemp)
     so.waitSem(sDatosTemp);
 
-    sampledAdc = auxSampledAdc; //Actualiza el valor del ADC compartido con la tarea InsertTemp
+    sampledAdc = auxSampledAdc;
 
     so.signalSem(sDatosTemp);
     
@@ -576,7 +595,7 @@ void ShareAdcValue() {
 }
 
 
-/* tarea encargada de obtener los limites introducidos por el usuario a través de la terminal */
+/* tarea encargada de obtener los límites introducidos por el usuario a través del terminal */
 void InsertComandos()
 {
   char c;
@@ -592,112 +611,153 @@ void InsertComandos()
 
   while (true)
   {
-
     // Check and read character received from UART if any
     c = term.getChar(false);
 
     // Check whether or not a byte has been received from UART
     if (c != term.NO_CHAR_RX_UART)
     {
-      //La ejecución va por turnos. Cada turno es para introducir un elemento. El primero es 
-      //la habitacion luego las temp max y mín y luego si de dia o de noche.
+      //La ejecución va por turnos. Cada turno es para introducir un elemento. El primero es el número
+      //de habitación, luego las Tª máximas y mínimas y luego si son límites para el día o la noche.
       switch (turno)
       {
-        case 0:
-          //1 = 49 2 = 50
+        case 0: //Obtenemos el número de la habitación
           if (c == '1' || c == '2' || c == '3' || c == '4') {
+            
             room = (int)c - 48;
             turno++;
+
           } else {
-            //Serial.println("Error en la Seleccion de Habitación");
+            
+            turno = 0;
+            
           }
           break;
 
         case 1:
           if (c == ' ') { //El espacio
+            
             turno++;
+            
           } else {
+            
             turno = 0;
           }
           break;
 
-        case 2:
+        case 2: //Obtenemos el límite de la temeratura máxima
           if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') {
-            if (i == 0) { //cogemos el primer valor (decenas)
+            if (i == 0) { //cogemos el primer valor: decenas
+              
               tempMax = 0;
               tempMax = tempMax + (((int)c - 48) * 10);
               i = i + 1;
+              
             } else if (i == 1) { //unidades
+              
               tempMax = tempMax + (int)c - 48;
               i = i + 1;
+              
             } else if (i == 2) { //'.'
+              
               i = i + 1;
+              
             } else {  //decimales
+              
               tempMax = tempMax + (((float) ((int)c - 48)) / 10);
               i = 0;
               turno++;
+              
             }
           } else {
+            
             turno = 0;
+            
           }
           break;
 
         case 3:
           if (c == ' ') { //El espacio
+            
             turno++;
+          
           } else {
+            
             turno = 0;
+            
           }
           break;
 
-        case 4:
+        case 4: //Obtenemos el límite de la temeratura mínima
           if ( c == '.' || c == '0' || c == '1' || c == '2' || c == '3' || c == '4' || c == '5' || c == '6' || c == '7' || c == '8' || c == '9') {
             if (i == 0) {
+              
               tempMin = 0;
               tempMin = tempMin + (((int)c - 48) * 10);
               i = i + 1;
+              
             } else if (i == 1) {
+              
               tempMin = tempMin + (int)c - 48;
               i = i + 1;
+              
             } else if (i == 2) {
+              
               i = i + 1;
+              
             } else {
+              
               tempMin = tempMin + (((float) ((int)c - 48)) / 10);
               i = 0;
               turno++;
+              
             }
 
           } else {
+            
             turno = 0;
+            
           }
           break;
           
         case 5:
           if (c == ' ') { //El espacio
+            
             turno++;
-            //Serial.println("FIN Temperatura Minima Seleccionada Correctamente");
+            
           } else {
+            
             turno = 0;
-            //Serial.println("Error en FIN Seleccion de Temperatura Minima");
+            
           }
           break;
 
-        case 6:
+        case 6: //Usuario indica si los límites son para el día o para la noche
           if (c == 'd' || c == 'n') {
+            
             turno = 0;
-
-            //Actualizar el valor de los límites en la habitación seleccionada
+            
+             // Write arrayLimites[] (shared with State)
             so.waitSem(sDatosTemp);
+            
             if (c == 'd') {
+              
               arrayLimites[room - 1].maxDay = tempMax;
               arrayLimites[room - 1].minDay = tempMin;
+              
             } else {
+              
               arrayLimites[room - 1].maxNight = tempMax;
               arrayLimites[room - 1].minNight = tempMin;
+              
             }
+            
             so.signalSem(sDatosTemp);
+            
           } else {
+            
             turno = 0;
+            
           }
           break;
 
